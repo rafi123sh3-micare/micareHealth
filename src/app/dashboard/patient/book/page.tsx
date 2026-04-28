@@ -7,6 +7,7 @@ import { Calendar, Clock, Video, ArrowLeft, ArrowRight, Check, Stethoscope, Doll
 import toast from 'react-hot-toast';
 import { supabase, getDoctors } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
+
 import { Card } from '@/components/ui/Card';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
 
@@ -543,5 +544,3 @@ className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors"
   </div>  
 </DashboardLayout>
 
-);
-}
