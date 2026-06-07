@@ -32,7 +32,7 @@ export interface Patient {
   age: number;
   gender: 'male' | 'female' | 'other';
   weight: number;
-  compliant: boolean;
+  compliant: string;
   address?: string;
 }
 

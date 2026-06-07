@@ -70,7 +70,7 @@ export default function AdminAppointments() {
     date: getLocalDateString(),
     time: '',
     reason: '',
-    compliant: false as boolean,
+    compliant: '',
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
   const [specialTimePower, setSpecialTimePower] = useState(false);
@@ -460,7 +460,7 @@ try {
            age: walkinPatient.age,
            sex: walkinPatient.sex || 'male',
            weight: walkinPatient.weight,
-           compliant: true,
+            compliant: walkinPatient.compliant || 'false',
          })
          .select('id')
          .single();
@@ -522,7 +522,7 @@ if (aptError) {
      setQRAppointment(createdApt);
      setShowQRModal(true);
      setShowWalkinModal(false);
-     setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', weight: 0, doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: false });
+      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', weight: 0, doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '' });
      setSpecialTimePower(false);
      setCustomTime('');
      loadData();
@@ -1062,8 +1062,9 @@ if (aptError) {
             </div>
           </div>
 
+
           <div>
-            <label className="text-sm font-medium text-slate-600 mb-2 block">সমস্যা</label>
+            <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর সমস্যা লিখুন</label>
             <textarea
               value={walkinPatient.reason}
               onChange={(e) => setWalkinPatient({ ...walkinPatient, reason: e.target.value })}
