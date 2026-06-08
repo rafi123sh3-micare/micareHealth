@@ -8,9 +8,6 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
-const ADMIN_EMAIL = 'ktprodhan@gmail.com';
-const ADMIN_PASSCODE = '4246';
-
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,22 +19,21 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
 
-    if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      if (password === ADMIN_PASSCODE) {
-        const { data: admin } = await supabase
-          .from('admins')
-          .select('*')
-          .eq('email', ADMIN_EMAIL)
-          .single();
+    // Check if the user is an admin by querying the admins table
+    const { data: admin } = await supabase
+      .from('admins')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .maybeSingle();
 
-        if (admin) {
-          localStorage.setItem('userRole', 'admin');
-          localStorage.setItem('adminData', JSON.stringify(admin));
-          router.push('/dashboard/admin');
-          toast.success('অ্যাডমিন হিসেবে লগইন!');
-          setLoading(false);
-          return;
-        }
+    if (admin) {
+      if (password.trim() === admin.passcode) {
+        localStorage.setItem('userRole', 'admin');
+        localStorage.setItem('adminData', JSON.stringify(admin));
+        router.push('/dashboard/admin');
+        toast.success('অ্যাডমিন হিসেবে লগইন!');
+        setLoading(false);
+        return;
       } else {
         toast.error('ভুল পাসকোড');
         setLoading(false);
@@ -51,7 +47,7 @@ export default function Login() {
       .eq('email', email.toLowerCase())
       .single();
 
-    if (doctor && doctor.passcode === password) {
+    if (doctor && doctor.passcode === password.trim()) {
       localStorage.setItem('userRole', 'doctor');
       localStorage.setItem('doctorData', JSON.stringify(doctor));
       router.push('/dashboard/doctor');
@@ -66,7 +62,7 @@ export default function Login() {
       .eq('email', email.toLowerCase())
       .single();
 
-    if (patient && patient.password === password) {
+    if (patient && patient.password === password.trim()) {
       localStorage.setItem('userRole', 'patient');
       localStorage.setItem('patientData', JSON.stringify(patient));
       router.push('/dashboard/patient');

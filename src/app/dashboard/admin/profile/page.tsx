@@ -79,28 +79,31 @@ export default function AdminProfile() {
   }
 
   async function handleChangePasscode() {
-    if (!newPasscode || !confirmPasscode) {
+    const trimmedNew = newPasscode.trim();
+    const trimmedConfirm = confirmPasscode.trim();
+
+    if (!trimmedNew || !trimmedConfirm) {
       toast.error('অনুগ্রহ করে পাসকোড লিখুন');
       return;
     }
 
-    if (newPasscode !== confirmPasscode) {
+    if (trimmedNew !== trimmedConfirm) {
       toast.error('পাসকোড মিলছে না');
       return;
     }
 
     const { error } = await supabase
       .from('admins')
-      .update({ passcode: newPasscode })
+      .update({ passcode: trimmedNew })
       .eq('id', adminData.id);
 
     if (error) {
       toast.error('পাসকোড আপডেট ব্যর্থ');
     } else {
-      const updated = { ...adminData, passcode: newPasscode };
+      const updated = { ...adminData, passcode: trimmedNew };
       localStorage.setItem('adminData', JSON.stringify(updated));
       setAdminData(updated);
-      setFormData({ ...formData, passcode: newPasscode });
+      setFormData({ ...formData, passcode: trimmedNew });
       toast.success('পাসকোড সফলভাবে পরিবর্তন করা হয়েছে');
       setIsChangingPasscode(false);
       setNewPasscode('');

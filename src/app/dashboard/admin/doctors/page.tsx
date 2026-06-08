@@ -124,11 +124,13 @@ export default function AdminDoctors() {
 
   const handleDeleteDoctor = async () => {
     if (!deleteDoctor) return;
-    if (adminPasscode !== '4246') {
+    const storedAdmin = localStorage.getItem('adminData');
+    const adminPasscodeFromDB = storedAdmin ? JSON.parse(storedAdmin).passcode : null;
+    if (adminPasscode.trim() !== adminPasscodeFromDB) {
       toast.error('অ্যাডমিন পাসকোড ভুল');
       return;
     }
-    if (doctorPasscode !== deleteDoctor.passcode) {
+    if (doctorPasscode.trim() !== deleteDoctor.passcode) {
       toast.error('ডাক্তারের পাসকোড ভুল');
       return;
     }
