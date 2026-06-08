@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import DatePicker from '@/components/ui/DatePicker';
 import toast from 'react-hot-toast';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
+import { sendSMS, buildConfirmationSMS } from '@/lib/sms';
 
 const statusConfig = {
   pending: { value: 'pending', label: 'অপেক্ষায়' },
@@ -138,7 +139,7 @@ const statusOrder: Record<string, number> = {
   async function updateStatus(aptId: string, newStatus: string) {
     const { data: apt } = await supabase
       .from('appointments')
-      .select('*, patients(name), doctors(name)')
+      .select('*, patients(name, phone), doctors(name)')
       .eq('id', aptId)
       .single();
 
@@ -198,6 +199,21 @@ const statusOrder: Record<string, number> = {
             date: apt.date,
           });
         } catch (e) {}
+
+        try {
+          const patientPhone = apt.patients?.phone;
+          if (patientPhone) {
+            const smsText = buildConfirmationSMS(
+              apt.doctors?.name || '',
+              apt.date,
+              apt.time || '',
+              updateData.serial_number || apt.serial_number || ''
+            );
+            await sendSMS(patientPhone, smsText);
+          }
+        } catch (e) {
+          console.error('SMS sending error:', e);
+        }
 
         if (apt.type === 'teleconsult') {
           try {

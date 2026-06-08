@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { QRCode } from '@/components/ui/QRCode';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
+import { sendSMS, buildConfirmationSMS } from '@/lib/sms';
 import DatePicker from '@/components/ui/DatePicker';
 import { motion } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
@@ -171,7 +172,7 @@ export default function AdminAppointments() {
     // Fetch fresh data
     const { data: apts, error: aptError } = await supabase
       .from('appointments')
-      .select('*, doctors(name, specialization), patients(name)')
+      .select('*, doctors(name, specialization), patients(name, phone)')
       .order('date', { ascending: false })
       .limit(100);
 
@@ -313,6 +314,21 @@ export default function AdminAppointments() {
             date: apt.date,
           });
         } catch (e) {}
+
+        try {
+          const patientPhone = apt.patients?.phone;
+          if (patientPhone) {
+            const smsText = buildConfirmationSMS(
+              apt.doctors?.name || '',
+              apt.date,
+              apt.time || '',
+              apt.serial_number || ''
+            );
+            await sendSMS(patientPhone, smsText);
+          }
+        } catch (e) {
+          console.error('SMS sending error:', e);
+        }
 
         if (apt.type === 'teleconsult') {
           try {
@@ -518,9 +534,25 @@ if (aptError) {
        .limit(1)
        .single();
 
-     toast.success('অ্যাপয়েন্টমেন্ট যোগ হয়েছে');
-     setQRAppointment(createdApt);
-     setShowQRModal(true);
+      toast.success('অ্যাপয়েন্টমেন্ট যোগ হয়েছে');
+      setQRAppointment(createdApt);
+      setShowQRModal(true);
+
+      try {
+        const walkinPhone = walkinPatient.phone;
+        if (walkinPhone) {
+          const walkinDoctor = doctors.find(d => d.id === walkinPatient.doctor_id);
+          const smsText = buildConfirmationSMS(
+            walkinDoctor?.name || '',
+            walkinPatient.date,
+            appointmentTime,
+            serialNumber || ''
+          );
+          await sendSMS(walkinPhone, smsText);
+        }
+      } catch (e) {
+        console.error('Walkin SMS error:', e);
+      }
      setShowWalkinModal(false);
       setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', weight: 0, doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '' });
      setSpecialTimePower(false);
