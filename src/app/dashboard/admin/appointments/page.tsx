@@ -563,12 +563,33 @@ if (aptError) {
       }
       console.log('Templates received:', templates);
       
+      const typeMap: Record<string, string> = {
+        'text': 'text', 'Short Text': 'text',
+        'paragraph': 'paragraph', 'Paragraph': 'paragraph',
+        'multiple_choice': 'multiple_choice', 'Multiple Choice': 'multiple_choice',
+        'checkboxes': 'checkboxes', 'Checkboxes': 'checkboxes',
+        'dropdown': 'dropdown', 'Dropdown': 'dropdown',
+        'file_upload': 'file_upload', 'Media Upload': 'file_upload',
+        'date': 'date', 'Date': 'date',
+        'time': 'time', 'Time': 'time',
+        'scale': 'scale', 'Linear Scale': 'scale',
+      };
+
       const flatQuestions = (templates || []).flatMap((row: any) =>
-        (row.questions || []).map((q: string, idx: number) => ({
-          id: `${row.id}_${idx}`,
-          disease_name: row.disease_name,
-          question: q,
-        }))
+        (row.questions || []).map((q: any, idx: number) => {
+          if (typeof q === 'string') {
+            return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
+          }
+          const rawType = q.type || 'paragraph';
+          return {
+            id: q.id || `${row.id}_${idx}`,
+            disease_name: row.disease_name,
+            question: q.text || q.question || '',
+            type: typeMap[rawType] || 'text',
+            options: q.options || [],
+            required: q.required || false,
+          };
+        })
       );
       
       const { data: existingHistory } = await supabase
@@ -1260,17 +1281,117 @@ if (aptError) {
                               </span>
                               <div className="flex-1 space-y-3">
                                 <label className="text-sm font-semibold text-slate-700">{q.question}</label>
-                                <textarea
-                                  value={historyAnswers[q.id] || ''}
-                                  onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
-                                  className="input w-full min-h-[70px] resize-y"
-                                  placeholder="লিখুন..."
-                                />
-                                <div className="flex flex-wrap gap-2">
-                                  {uploadBtn('ছবি', imgKey, 'image/*', <Upload className="w-3.5 h-3.5" />)}
-                                  {uploadBtn('ভিডিও', vidKey, 'video/*', <Video className="w-3.5 h-3.5" />)}
-                                  {uploadBtn('অডিও', audKey, 'audio/*', <Upload className="w-3.5 h-3.5" />)}
-                                </div>
+                                {q.type === 'multiple_choice' ? (
+                                  <div className="space-y-2">
+                                    {(q.options || []).map((opt: string, oIdx: number) => (
+                                      <label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400">
+                                        <input
+                                          type="radio"
+                                          name={q.id}
+                                          value={opt}
+                                          checked={historyAnswers[q.id] === opt}
+                                          onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
+                                          className="w-4 h-4 text-primary-600 accent-primary-600"
+                                        />
+                                        <span className="text-sm text-slate-700">{opt}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                ) : q.type === 'checkboxes' ? (
+                                  <div className="space-y-2">
+                                    {(q.options || []).map((opt: string, oIdx: number) => {
+                                      const checked = (historyAnswers[q.id] || '').split(',').includes(opt);
+                                      return (
+                                        <label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400">
+                                          <input
+                                            type="checkbox"
+                                            value={opt}
+                                            checked={checked}
+                                            onChange={(e) => {
+                                              const current = (historyAnswers[q.id] || '').split(',').filter(Boolean);
+                                              const updated = e.target.checked
+                                                ? [...current, opt]
+                                                : current.filter((v: string) => v !== opt);
+                                              setHistoryAnswers({ ...historyAnswers, [q.id]: updated.join(',') });
+                                            }}
+                                            className="w-4 h-4 text-primary-600 rounded accent-primary-600"
+                                          />
+                                          <span className="text-sm text-slate-700">{opt}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : q.type === 'scale' ? (
+                                  <div className="space-y-3">
+                                    <div className="flex items-center justify-between gap-1">
+                                      {(q.options || []).map((val: string, oIdx: number) => (
+                                        <button
+                                          key={oIdx}
+                                          type="button"
+                                          onClick={() => setHistoryAnswers({ ...historyAnswers, [q.id]: val })}
+                                          className={`w-10 h-10 rounded-full text-sm font-medium transition-all ${
+                                            historyAnswers[q.id] === val
+                                              ? 'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110'
+                                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                          }`}
+                                        >
+                                          {val}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    {q.options && q.options.length >= 2 && (
+                                      <div className="flex justify-between text-xs text-slate-400 px-1">
+                                        <span>{q.options[0]} - {q.options[q.options.length - 1]}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : q.type === 'date' ? (
+                                  <input
+                                    type="date"
+                                    value={historyAnswers[q.id] || ''}
+                                    onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
+                                    className="input w-full"
+                                  />
+                                ) : q.type === 'time' ? (
+                                  <input
+                                    type="time"
+                                    value={historyAnswers[q.id] || ''}
+                                    onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
+                                    className="input w-full"
+                                  />
+                                ) : q.type === 'dropdown' ? (
+                                  <select
+                                    value={historyAnswers[q.id] || ''}
+                                    onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
+                                    className="input w-full"
+                                  >
+                                    <option value="">নির্বাচন করুন</option>
+                                    {(q.options || []).map((opt: string, oIdx: number) => (
+                                      <option key={oIdx} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                ) : q.type === 'file_upload' ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    {uploadBtn('ছবি', imgKey, 'image/*', <Upload className="w-3.5 h-3.5" />)}
+                                    {uploadBtn('ভিডিও', vidKey, 'video/*', <Video className="w-3.5 h-3.5" />)}
+                                    {uploadBtn('অডিও', audKey, 'audio/*', <Upload className="w-3.5 h-3.5" />)}
+                                  </div>
+                                ) : q.type === 'paragraph' ? (
+                                  <textarea
+                                    value={historyAnswers[q.id] || ''}
+                                    onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
+                                    className="input w-full min-h-[70px] resize-y"
+                                    placeholder="লিখুন..."
+                                  />
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={historyAnswers[q.id] || ''}
+                                    onChange={(e) => setHistoryAnswers({ ...historyAnswers, [q.id]: e.target.value })}
+                                    className="input w-full"
+                                    placeholder="লিখুন..."
+                                  />
+                                )}
                               </div>
                             </div>
                           </div>
