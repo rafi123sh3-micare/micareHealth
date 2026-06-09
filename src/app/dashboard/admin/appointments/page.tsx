@@ -1280,22 +1280,31 @@ if (aptError) {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-                                  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
-                                  if (!cloudName || !uploadPreset) { toast.error('Cloudinary কনফিগার করা হয়নি'); return; }
-                                  const openWidget = () => {
-                                    const w = (window as any).cloudinary.createUploadWidget(
-                                      { cloudName, uploadPreset, maxFileSize: 50000000 },
-                                      (e: any, r: any) => { if (!e && r && r.event === 'success') { setHistoryAnswers((p: any) => ({...p, [key]: r.info.secure_url})); toast.success('আপলোড সফল'); } }
-                                    );
-                                    w.open();
+                                  const input = document.createElement('input');
+                                  input.type = 'file';
+                                  input.accept = accept;
+                                  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+                                  input.onchange = (e: any) => {
+                                    const file = e.target?.files?.[0];
+                                    if (!file) return;
+                                    if (file.size > MAX_FILE_SIZE) {
+                                      toast.error('ফাইলের সাইজ ৫০MB এর বেশি হতে পারবে না');
+                                      return;
+                                    }
+                                    const expectedType = accept.split('/')[0];
+                                    if (!file.type.startsWith(expectedType + '/')) {
+                                      const typeLabels: Record<string, string> = { image: 'ছবি', video: 'ভিডিও', audio: 'অডিও' };
+                                      toast.error(`অনুগ্রহ করে একটি বৈধ ${typeLabels[expectedType] || expectedType} ফাইল নির্বাচন করুন`);
+                                      return;
+                                    }
+                                    const reader = new FileReader();
+                                    reader.onload = (ev) => {
+                                      setHistoryAnswers((p: any) => ({...p, [key]: ev.target?.result as string}));
+                                      toast.success('আপলোড সফল');
+                                    };
+                                    reader.readAsDataURL(file);
                                   };
-                                  if (!(window as any).cloudinary) {
-                                    const s = document.createElement('script');
-                                    s.src = 'https://upload-widget.cloudinary.com/global/all.js';
-                                    s.onload = openWidget;
-                                    document.body.appendChild(s);
-                                  } else openWidget();
+                                  input.click();
                                 }}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium"
                               >
