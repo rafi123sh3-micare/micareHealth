@@ -41,6 +41,63 @@ const statusConfig = {
   cancelled: { value: 'cancelled', label: 'বাতিল' },
 };
 
+// Cache history templates to avoid repeated network calls
+let historyTemplatesCache: any[] | null = null;
+const STORAGE_KEY = 'history_templates_cache';
+
+function loadCachedTemplates(): any[] | null {
+  if (historyTemplatesCache) return historyTemplatesCache;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { const p = JSON.parse(raw); historyTemplatesCache = p; return p; }
+  } catch {}
+  return null;
+}
+
+function saveCachedTemplates(templates: any[]) {
+  historyTemplatesCache = templates;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(templates)); } catch {}
+}
+
+const FALLBACK_HISTORY = [
+  { id: 'demo-1', disease_name: 'ডায়াবেটিস', question: 'আপনার বর্তমান সুগার লেভেল কত?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-2', disease_name: 'ডায়াবেটিস', question: 'কখন শেষবার চেক করেছিলেন?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-3', disease_name: 'উচ্চ রক্তচাপ', question: 'আপনার বর্তমান প্রেসার কত?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-4', disease_name: 'উচ্চ রক্তচাপ', question: 'ওষুধ নিয়মিত খান?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-5', disease_name: 'হৃদরোগ', question: 'বুকে ব্যথা অনুভব করছেন?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-6', disease_name: 'হৃদরোগ', question: 'শ্বাস নিতে কষ্ট হচ্ছে?', type: 'paragraph' as const, options: [], required: false },
+];
+
+const TYPE_MAP: Record<string, string> = {
+  'text': 'text', 'Short Text': 'text',
+  'paragraph': 'paragraph', 'Paragraph': 'paragraph',
+  'multiple_choice': 'multiple_choice', 'Multiple Choice': 'multiple_choice',
+  'checkboxes': 'checkboxes', 'Checkboxes': 'checkboxes',
+  'dropdown': 'dropdown', 'Dropdown': 'dropdown',
+  'file_upload': 'file_upload', 'Media Upload': 'file_upload',
+  'date': 'date', 'Date': 'date',
+  'time': 'time', 'Time': 'time',
+  'scale': 'scale', 'Linear Scale': 'scale',
+};
+
+function processHistoryTemplates(templates: any[]): any[] {
+  return (templates || []).flatMap((row: any) =>
+    (row.questions || []).map((q: any, idx: number) => {
+      if (typeof q === 'string') return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
+      const rawType = q.type || 'paragraph';
+      return {
+        id: q.id || `${row.id}_${idx}`,
+        disease_name: row.disease_name,
+        question: q.text || q.question || '',
+        type: TYPE_MAP[rawType] || 'text',
+        options: q.options || [],
+        required: q.required || false,
+        acceptTypes: q.acceptTypes || [],
+      };
+    })
+  );
+}
+
 const getLocalDateString = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -83,6 +140,7 @@ export default function AdminAppointments() {
   const [showPrescribeConfirm, setShowPrescribeConfirm] = useState(false);
   const [prescribePatient, setPrescribePatient] = useState<any>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPatient, setHistoryPatient] = useState<any>(null);
   const [historyQuestions, setHistoryQuestions] = useState<any[]>([]);
   const [historyAnswers, setHistoryAnswers] = useState<{[key: string]: string}>({});
@@ -94,6 +152,15 @@ export default function AdminAppointments() {
     if (localStorage.getItem('openAppointmentModal') === 'true') {
       localStorage.removeItem('openAppointmentModal');
       setTimeout(() => setShowWalkinModal(true), 500);
+    }
+  }, []);
+
+  // Eagerly prefetch history templates for instant History modal
+  useEffect(() => {
+    if (!loadCachedTemplates()) {
+      supabase1.from('history_templates').select('*').then(({ data }) => {
+        if (data) saveCachedTemplates(data);
+      });
     }
   }, []);
 
@@ -585,87 +652,61 @@ if (aptError) {
   };
 
   const handleHistory = async (apt: any) => {
-    try {
-      console.log('Fetching history_templates from supabase1...');
-      const { data: templates, error: templatesError } = await supabase1
-        .from('history_templates')
-        .select('*');
-      
-      if (templatesError) {
-        console.error('Error fetching history_templates:', templatesError);
-      }
-      console.log('Templates received:', templates);
-      
-      const typeMap: Record<string, string> = {
-        'text': 'text', 'Short Text': 'text',
-        'paragraph': 'paragraph', 'Paragraph': 'paragraph',
-        'multiple_choice': 'multiple_choice', 'Multiple Choice': 'multiple_choice',
-        'checkboxes': 'checkboxes', 'Checkboxes': 'checkboxes',
-        'dropdown': 'dropdown', 'Dropdown': 'dropdown',
-        'file_upload': 'file_upload', 'Media Upload': 'file_upload',
-        'date': 'date', 'Date': 'date',
-        'time': 'time', 'Time': 'time',
-        'scale': 'scale', 'Linear Scale': 'scale',
-      };
+    const cached = loadCachedTemplates();
 
-      const flatQuestions = (templates || []).flatMap((row: any) =>
-        (row.questions || []).map((q: any, idx: number) => {
-          if (typeof q === 'string') {
-            return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
-          }
-          const rawType = q.type || 'paragraph';
-          return {
-            id: q.id || `${row.id}_${idx}`,
-            disease_name: row.disease_name,
-            question: q.text || q.question || '',
-            type: typeMap[rawType] || 'text',
-            options: q.options || [],
-            required: q.required || false,
-          };
-        })
-      );
-      
-      const { data: existingHistory } = await supabase
-        .from('patient_history')
-        .select('*')
-        .eq('patient_id', apt.patient_id);
-      
-      const existingAnswers: {[key: string]: string} = {};
-      if (existingHistory) {
-        existingHistory.forEach((h: any) => {
-          existingAnswers[h.question_id] = h.answer;
-        });
-      }
-      
-      const fallbackTemplates = [
-        { id: 'demo-1', disease_name: 'ডায়াবেটিস', question: 'আপনার বর্তমান সুগার লেভেল কত?' },
-        { id: 'demo-2', disease_name: 'ডায়াবেটিস', question: 'কখন শেষবার চেক করেছিলেন?' },
-        { id: 'demo-3', disease_name: 'উচ্চ রক্তচাপ', question: 'আপনার বর্তমান প্রেসার কত?' },
-        { id: 'demo-4', disease_name: 'উচ্চ রক্তচাপ', question: 'ওষুধ নিয়মিত খান?' },
-        { id: 'demo-5', disease_name: 'হৃদরোগ', question: 'বুকে ব্যথা অনুভব করছেন?' },
-        { id: 'demo-6', disease_name: 'হৃদরোগ', question: 'শ্বাস নিতে কষ্ট হচ্ছে?' },
-      ];
-      setHistoryQuestions(flatQuestions.length > 0 ? flatQuestions : fallbackTemplates);
-      setHistoryStep(-1);
-    } catch (err) {
-      console.error('handleHistory crashed:', err);
-      setHistoryQuestions([
-        { id: 'demo-1', disease_name: 'ডায়াবেটিস', question: 'আপনার বর্তমান সুগার লেভেল কত?' },
-        { id: 'demo-2', disease_name: 'ডায়াবেটিস', question: 'কখন শেষবার চেক করেছিলেন?' },
-        { id: 'demo-3', disease_name: 'উচ্চ রক্তচাপ', question: 'আপনার বর্তমান প্রেসার কত?' },
-        { id: 'demo-4', disease_name: 'উচ্চ রক্তচাপ', question: 'ওষুধ নিয়মিত খান?' },
-        { id: 'demo-5', disease_name: 'হৃদরোগ', question: 'বুকে ব্যথা অনুভব করছেন?' },
-        { id: 'demo-6', disease_name: 'হৃদরোগ', question: 'শ্বাস নিতে কষ্ট হচ্ছে?' },
-      ]);
-      setHistoryStep(-1);
-    }
     setHistoryPatient({
       patient_id: apt.patient_id,
       patient_name: apt.patientName,
       appointment_id: apt.id,
     });
     setHistoryAnswers({});
+    setHistoryStep(-1);
+
+    if (cached) {
+      // FAST PATH: templates cached → open modal instantly, answers load in background
+      setHistoryQuestions(processHistoryTemplates(cached));
+      setHistoryLoading(false);
+      setShowHistoryModal(true);
+
+      const { data: existingHistory } = await supabase
+        .from('patient_history').select('*').eq('patient_id', apt.patient_id);
+
+      const existingAnswers: {[key: string]: string} = {};
+      if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
+      setHistoryAnswers(existingAnswers);
+      return;
+    }
+
+    // SLOW PATH: no cache → fetch everything with loading spinner
+    setHistoryQuestions([]);
+    setHistoryLoading(true);
     setShowHistoryModal(true);
+
+    try {
+      const [templatesResult, existingHistoryResult] = await Promise.all([
+        supabase1.from('history_templates').select('*'),
+        supabase.from('patient_history').select('*').eq('patient_id', apt.patient_id),
+      ]);
+
+      const { data: templates, error: templatesError } = templatesResult;
+      const { data: existingHistory } = existingHistoryResult;
+
+      if (templatesError) console.error('Error fetching history_templates:', templatesError);
+      if (templates) saveCachedTemplates(templates);
+
+      const flatQuestions = processHistoryTemplates(templates || []);
+
+      const existingAnswers: {[key: string]: string} = {};
+      if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
+      setHistoryAnswers(existingAnswers);
+
+      setHistoryQuestions(flatQuestions.length > 0 ? flatQuestions : FALLBACK_HISTORY);
+    } catch (err) {
+      console.error('handleHistory crashed:', err);
+      setHistoryQuestions(FALLBACK_HISTORY);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const submitHistoryAnswers = async () => {
@@ -1221,7 +1262,14 @@ if (aptError) {
       >
         <div className="space-y-6">
           <p className="font-semibold text-lg">{historyPatient?.patient_name} এর জন্য ইতিহাস ফর্ম</p>
-          {historyQuestions.length === 0 ? (
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+                <span className="text-sm text-slate-400">লোড হচ্ছে...</span>
+              </div>
+            </div>
+          ) : historyQuestions.length === 0 ? (
             <p className="text-slate-500">কোনো প্রশ্ন পাওয়া যায়নি</p>
           ) : (
               (() => {
@@ -1268,23 +1316,42 @@ if (aptError) {
                         const imgKey = `${q.id}_img`;
                         const vidKey = `${q.id}_vid`;
                         const audKey = `${q.id}_aud`;
-                        const uploadBtn = (label: string, key: string, accept: string, icon: any) => (
-                          <div className="space-y-1">
-                            {historyAnswers[key] ? (
-                              <div className="relative inline-block">
-                                {accept.startsWith('image') && <img src={historyAnswers[key]} alt="" className="max-h-28 rounded-lg object-cover" />}
-                                {accept.startsWith('video') && <video src={historyAnswers[key]} controls className="max-h-28 rounded-lg" />}
-                                {accept.startsWith('audio') && <audio src={historyAnswers[key]} controls className="h-10" />}
-                                <button type="button" onClick={() => { const a={...historyAnswers}; delete a[key]; setHistoryAnswers(a); }} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">X</button>
-                              </div>
-                            ) : (
+                        const getFilesArr = (val: string | undefined): string[] => {
+                          if (!val) return [];
+                          try { const p = JSON.parse(val); return Array.isArray(p) ? p : [val]; }
+                          catch { return [val]; }
+                        };
+                        const uploadBtn = (label: string, key: string, accept: string, icon: any) => {
+                          const files = getFilesArr(historyAnswers[key]);
+                          return (
+                            <div className="space-y-1">
+                              {files.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {files.map((file, idx) => (
+                                    <div key={idx} className="relative inline-block group">
+                                      {accept.startsWith('image') && <img src={file} alt="" className="max-h-28 rounded-lg object-cover" />}
+                                      {accept.startsWith('video') && <video src={file} controls className="max-h-28 rounded-lg" />}
+                                      {accept.startsWith('audio') && <audio src={file} controls className="h-10" />}
+                                      <button type="button" onClick={() => {
+                                        const updated = files.filter((_, i) => i !== idx);
+                                        setHistoryAnswers((p: any) => {
+                                          const a = {...p};
+                                          if (updated.length > 0) a[key] = JSON.stringify(updated);
+                                          else delete a[key];
+                                          return a;
+                                        });
+                                      }} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
                                   const input = document.createElement('input');
                                   input.type = 'file';
                                   input.accept = accept;
-                                  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+                                  const MAX_FILE_SIZE = 50 * 1024 * 1024;
                                   input.onchange = (e: any) => {
                                     const file = e.target?.files?.[0];
                                     if (!file) return;
@@ -1300,7 +1367,15 @@ if (aptError) {
                                     }
                                     const reader = new FileReader();
                                     reader.onload = (ev) => {
-                                      setHistoryAnswers((p: any) => ({...p, [key]: ev.target?.result as string}));
+                                      setHistoryAnswers((p: any) => {
+                                        const prev = p[key];
+                                        let arr: string[] = [];
+                                        if (prev) {
+                                          try { const parsed = JSON.parse(prev); arr = Array.isArray(parsed) ? parsed : [prev]; }
+                                          catch { arr = [prev]; }
+                                        }
+                                        return {...p, [key]: JSON.stringify([...arr, ev.target?.result as string])};
+                                      });
                                       toast.success('আপলোড সফল');
                                     };
                                     reader.readAsDataURL(file);
@@ -1312,9 +1387,9 @@ if (aptError) {
                                 {icon}
                                 {label}
                               </button>
-                            )}
-                          </div>
-                        );
+                            </div>
+                          );
+                        };
                         return (
                           <div key={q.id} className="bg-slate-50 rounded-xl p-4 space-y-3">
                             <div className="flex items-start gap-3">
@@ -1413,10 +1488,20 @@ if (aptError) {
                                     ))}
                                   </select>
                                 ) : q.type === 'file_upload' ? (
-                                  <div className="flex flex-wrap gap-2">
-                                    {uploadBtn('ছবি', imgKey, 'image/*', <Upload className="w-3.5 h-3.5" />)}
-                                    {uploadBtn('ভিডিও', vidKey, 'video/*', <Video className="w-3.5 h-3.5" />)}
-                                    {uploadBtn('অডিও', audKey, 'audio/*', <Upload className="w-3.5 h-3.5" />)}
+                                  <div className="space-y-2">
+                                    {q.acceptTypes && q.acceptTypes.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 items-center">
+                                        <span className="text-[11px] text-slate-400 font-medium">গ্রহণযোগ্য:</span>
+                                        {q.acceptTypes.includes('image') && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200">ছবি</span>}
+                                        {q.acceptTypes.includes('video') && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-600 border border-purple-200">ভিডিও</span>}
+                                        {q.acceptTypes.includes('audio') && <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-600 border border-emerald-200">অডিও</span>}
+                                      </div>
+                                    )}
+                                    <div className="flex flex-wrap gap-2">
+                                      {(!q.acceptTypes || q.acceptTypes.length === 0 || q.acceptTypes.includes('image')) && uploadBtn('ছবি', imgKey, 'image/*', <Upload className="w-3.5 h-3.5" />)}
+                                      {(!q.acceptTypes || q.acceptTypes.length === 0 || q.acceptTypes.includes('video')) && uploadBtn('ভিডিও', vidKey, 'video/*', <Video className="w-3.5 h-3.5" />)}
+                                      {(!q.acceptTypes || q.acceptTypes.length === 0 || q.acceptTypes.includes('audio')) && uploadBtn('অডিও', audKey, 'audio/*', <Upload className="w-3.5 h-3.5" />)}
+                                    </div>
                                   </div>
                                 ) : q.type === 'paragraph' ? (
                                   <textarea

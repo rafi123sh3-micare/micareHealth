@@ -22,6 +22,63 @@ const statusConfig = {
   completed: { value: 'completed', label: 'সম্পন্ন' },
   cancelled: { value: 'cancelled', label: 'বাতিল' },
 };
+// Cache history templates to avoid repeated network calls
+let historyTemplatesCache: any[] | null = null;
+const STORAGE_KEY = 'history_templates_cache';
+
+function loadCachedTemplates(): any[] | null {
+  if (historyTemplatesCache) return historyTemplatesCache;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { const p = JSON.parse(raw); historyTemplatesCache = p; return p; }
+  } catch {}
+  return null;
+}
+
+function saveCachedTemplates(templates: any[]) {
+  historyTemplatesCache = templates;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(templates)); } catch {}
+}
+
+const FALLBACK_HISTORY = [
+  { id: 'demo-1', disease_name: 'ডায়াবেটিস', question: 'আপনার বর্তমান সুগার লেভেল কত?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-2', disease_name: 'ডায়াবেটিস', question: 'কখন শেষবার চেক করেছিলেন?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-3', disease_name: 'উচ্চ রক্তচাপ', question: 'আপনার বর্তমান প্রেসার কত?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-4', disease_name: 'উচ্চ রক্তচাপ', question: 'ওষুধ নিয়মিত খান?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-5', disease_name: 'হৃদরোগ', question: 'বুকে ব্যথা অনুভব করছেন?', type: 'paragraph' as const, options: [], required: false },
+  { id: 'demo-6', disease_name: 'হৃদরোগ', question: 'শ্বাস নিতে কষ্ট হচ্ছে?', type: 'paragraph' as const, options: [], required: false },
+];
+
+const TYPE_MAP: Record<string, string> = {
+  'text': 'text', 'Short Text': 'text',
+  'paragraph': 'paragraph', 'Paragraph': 'paragraph',
+  'multiple_choice': 'multiple_choice', 'Multiple Choice': 'multiple_choice',
+  'checkboxes': 'checkboxes', 'Checkboxes': 'checkboxes',
+  'dropdown': 'dropdown', 'Dropdown': 'dropdown',
+  'file_upload': 'file_upload', 'Media Upload': 'file_upload',
+  'date': 'date', 'Date': 'date',
+  'time': 'time', 'Time': 'time',
+  'scale': 'scale', 'Linear Scale': 'scale',
+};
+
+function processHistoryTemplates(templates: any[]): any[] {
+  return (templates || []).flatMap((row: any) =>
+    (row.questions || []).map((q: any, idx: number) => {
+      if (typeof q === 'string') return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
+      const rawType = q.type || 'paragraph';
+      return {
+        id: q.id || `${row.id}_${idx}`,
+        disease_name: row.disease_name,
+        question: q.text || q.question || '',
+        type: TYPE_MAP[rawType] || 'text',
+        options: q.options || [],
+        required: q.required || false,
+        acceptTypes: q.acceptTypes || [],
+      };
+    })
+  );
+}
+
 const getLocalDateString = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset();
@@ -39,6 +96,7 @@ export default function DoctorAppointments() {
   const [showPrescribeConfirm, setShowPrescribeConfirm] = useState(false);
   const [prescribePatient, setPrescribePatient] = useState<any>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPatient, setHistoryPatient] = useState<any>(null);
   const [historyQuestions, setHistoryQuestions] = useState<any[]>([]);
   const [historyAnswers, setHistoryAnswers] = useState<{[key: string]: string}>({});
@@ -64,6 +122,16 @@ export default function DoctorAppointments() {
   useEffect(() => {
     loadAppointments();
   }, []);
+
+  // Eagerly prefetch history templates for instant History modal
+  useEffect(() => {
+    if (!loadCachedTemplates()) {
+      supabase1.from('history_templates').select('*').then(({ data }) => {
+        if (data) saveCachedTemplates(data);
+      });
+    }
+  }, []);
+
 useEffect(() => {
   const interval = setInterval(() => {
     setFilterDate(getLocalDateString());
@@ -387,50 +455,57 @@ const statusOrder: Record<string, number> = {
   };
 
   const handleHistory = async (apt: any) => {
-    try {
-      const { data: templates, error: templatesError } = await supabase1
-        .from('history_templates')
-        .select('*');
-      if (templatesError) console.error('Error fetching history_templates:', templatesError);
-      const typeMap: Record<string, string> = {
-        'text': 'text', 'Short Text': 'text',
-        'paragraph': 'paragraph', 'Paragraph': 'paragraph',
-        'multiple_choice': 'multiple_choice', 'Multiple Choice': 'multiple_choice',
-        'checkboxes': 'checkboxes', 'Checkboxes': 'checkboxes',
-        'dropdown': 'dropdown', 'Dropdown': 'dropdown',
-        'file_upload': 'file_upload', 'Media Upload': 'file_upload',
-        'date': 'date', 'Date': 'date',
-        'time': 'time', 'Time': 'time',
-        'scale': 'scale', 'Linear Scale': 'scale',
-      };
-      const flatQuestions = (templates || []).flatMap((row: any) =>
-        (row.questions || []).map((q: any, idx: number) => {
-          if (typeof q === 'string') return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
-          const rawType = q.type || 'paragraph';
-          return { id: q.id || `${row.id}_${idx}`, disease_name: row.disease_name, question: q.text || q.question || '', type: typeMap[rawType] || 'text', options: q.options || [], required: q.required || false };
-        })
-      );
-      const { data: existingHistory } = await supabase.from('patient_history').select('*').eq('patient_id', apt.patient_id);
-      const existingAnswers: {[key: string]: string} = {};
-      if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
-      const fallbackTemplates = [
-        { id: 'demo-1', disease_name: 'ডায়াবেটিস', question: 'আপনার বর্তমান সুগার লেভেল কত?' },
-        { id: 'demo-2', disease_name: 'ডায়াবেটিস', question: 'কখন শেষবার চেক করেছিলেন?' },
-        { id: 'demo-3', disease_name: 'উচ্চ রক্তচাপ', question: 'আপনার বর্তমান প্রেসার কত?' },
-        { id: 'demo-4', disease_name: 'উচ্চ রক্তচাপ', question: 'ওষুধ নিয়মিত খান?' },
-        { id: 'demo-5', disease_name: 'হৃদরোগ', question: 'বুকে ব্যথা অনুভব করছেন?' },
-        { id: 'demo-6', disease_name: 'হৃদরোগ', question: 'শ্বাস নিতে কষ্ট হচ্ছে?' },
-      ];
-      setHistoryQuestions(flatQuestions.length > 0 ? flatQuestions : fallbackTemplates);
-      setHistoryStep(-1);
-    } catch (err) {
-      console.error('handleHistory crashed:', err);
-      setHistoryQuestions([{ id: 'demo-1', disease_name: 'ডায়াবেটিস', question: 'আপনার বর্তমান সুগার লেভেল কত?' }, { id: 'demo-2', disease_name: 'ডায়াবেটিস', question: 'কখন শেষবার চেক করেছিলেন?' }, { id: 'demo-3', disease_name: 'উচ্চ রক্তচাপ', question: 'আপনার বর্তমান প্রেসার কত?' }, { id: 'demo-4', disease_name: 'উচ্চ রক্তচাপ', question: 'ওষুধ নিয়মিত খান?' }, { id: 'demo-5', disease_name: 'হৃদরোগ', question: 'বুকে ব্যথা অনুভব করছেন?' }, { id: 'demo-6', disease_name: 'হৃদরোগ', question: 'শ্বাস নিতে কষ্ট হচ্ছে?' }]);
-      setHistoryStep(-1);
-    }
+    const cached = loadCachedTemplates();
+
     setHistoryPatient({ patient_id: apt.patient_id, patient_name: apt.patientName, appointment_id: apt.id });
     setHistoryAnswers({});
+    setHistoryStep(-1);
+
+    if (cached) {
+      // FAST PATH: templates cached → open modal instantly, answers load in background
+      setHistoryQuestions(processHistoryTemplates(cached));
+      setHistoryLoading(false);
+      setShowHistoryModal(true);
+
+      const { data: existingHistory } = await supabase
+        .from('patient_history').select('*').eq('patient_id', apt.patient_id);
+
+      const existingAnswers: {[key: string]: string} = {};
+      if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
+      setHistoryAnswers(existingAnswers);
+      return;
+    }
+
+    // SLOW PATH: no cache → fetch everything with loading spinner
+    setHistoryQuestions([]);
+    setHistoryLoading(true);
     setShowHistoryModal(true);
+
+    try {
+      const [templatesResult, existingHistoryResult] = await Promise.all([
+        supabase1.from('history_templates').select('*'),
+        supabase.from('patient_history').select('*').eq('patient_id', apt.patient_id),
+      ]);
+
+      const { data: templates, error: templatesError } = templatesResult;
+      const { data: existingHistory } = existingHistoryResult;
+
+      if (templatesError) console.error('Error fetching history_templates:', templatesError);
+      if (templates) saveCachedTemplates(templates);
+
+      const flatQuestions = processHistoryTemplates(templates || []);
+
+      const existingAnswers: {[key: string]: string} = {};
+      if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
+      setHistoryAnswers(existingAnswers);
+
+      setHistoryQuestions(flatQuestions.length > 0 ? flatQuestions : FALLBACK_HISTORY);
+    } catch (err) {
+      console.error('handleHistory crashed:', err);
+      setHistoryQuestions(FALLBACK_HISTORY);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const submitHistoryAnswers = async () => {
@@ -646,21 +721,21 @@ const statusOrder: Record<string, number> = {
       <Modal isOpen={showHistoryModal} onClose={() => { setShowHistoryModal(false); setHistoryStep(-1); }} title="রোগী ইতিহাস" size="xl">
         <div className="space-y-6">
           <p className="font-semibold text-lg">{historyPatient?.patient_name} এর জন্য ইতিহাস ফর্ম</p>
-          {historyQuestions.length === 0 ? <p className="text-slate-500">কোনো প্রশ্ন পাওয়া যায়নি</p> : (
+          {historyLoading ? <div className="flex items-center justify-center py-16"><div className="flex flex-col items-center gap-3"><div className="w-10 h-10 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin" /><span className="text-sm text-slate-400">লোড হচ্ছে...</span></div></div> : historyQuestions.length === 0 ? <p className="text-slate-500">কোনো প্রশ্ন পাওয়া যায়নি</p> : (
             (() => {
               const grouped = historyQuestions.reduce((acc: Record<string, any[]>, q: any) => { const d = q.disease_name || 'সাধারণ'; if(!acc[d]) acc[d]=[]; acc[d].push(q); return acc; }, {});
               const diseaseNames = Object.keys(grouped);
               if (historyStep === -1) return (<div className="grid grid-cols-2 gap-3">{diseaseNames.map((name, idx) => (<button key={name} onClick={() => setHistoryStep(idx)} className="p-5 rounded-xl border-2 border-slate-200 hover:border-primary-400 hover:bg-primary-50 transition-all text-left"><h4 className="font-bold text-primary-700 text-lg">{name}</h4><p className="text-xs text-slate-500 mt-1">{grouped[name].length} টি প্রশ্ন</p></button>))}</div>);
               const currentDisease = diseaseNames[historyStep];
               const currentQuestions = grouped[currentDisease];
-              return (<><div className="flex items-center justify-between"><h3 className="text-xl font-bold text-primary-700">{currentDisease}</h3></div><div className="space-y-4">{currentQuestions.map((q: any, qIdx: number) => { const imgKey=`${q.id}_img`; const vidKey=`${q.id}_vid`; const audKey=`${q.id}_aud`; const uploadBtn=(label: string, key: string, accept: string, icon: any) => (<div className="space-y-1">{historyAnswers[key] ? (<div className="relative inline-block">{accept.startsWith('image') && <img src={historyAnswers[key]} alt="" className="max-h-28 rounded-lg object-cover" />}{accept.startsWith('video') && <video src={historyAnswers[key]} controls className="max-h-28 rounded-lg" />}{accept.startsWith('audio') && <audio src={historyAnswers[key]} controls className="h-10" />}<button type="button" onClick={() => { const a={...historyAnswers}; delete a[key]; setHistoryAnswers(a); }} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">X</button></div>) : (<button type="button" onClick={() => { const MAX_FILE_SIZE=50*1024*1024; const input=document.createElement('input'); input.type='file'; input.accept=accept; input.onchange=(e: any) => { const file=e.target?.files?.[0]; if(!file) return; if(file.size>MAX_FILE_SIZE){toast.error('ফাইলের সাইজ ৫০MB এর বেশি হতে পারবে না'); return;} const expectedType=accept.split('/')[0]; if(!file.type.startsWith(expectedType+'/')){const tL:{[k:string]:string}={image:'ছবি',video:'ভিডিও',audio:'অডিও'}; toast.error(`অনুগ্রহ করে একটি বৈধ ${tL[expectedType]||expectedType} ফাইল নির্বাচন করুন`); return;} const reader=new FileReader(); reader.onload=(ev) => { setHistoryAnswers((p:any)=>({...p,[key]:ev.target?.result as string})); toast.success('আপলোড সফল'); }; reader.readAsDataURL(file); }; input.click(); }} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium">{icon}{label}</button>)}</div>); return (<div key={q.id} className="bg-slate-50 rounded-xl p-4 space-y-3"><div className="flex items-start gap-3"><span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">{qIdx+1}</span><div className="flex-1 space-y-3"><label className="text-sm font-semibold text-slate-700">{q.question}</label>
+              return (<><div className="flex items-center justify-between"><h3 className="text-xl font-bold text-primary-700">{currentDisease}</h3></div><div className="space-y-4">{currentQuestions.map((q: any, qIdx: number) => { const imgKey=`${q.id}_img`; const vidKey=`${q.id}_vid`; const audKey=`${q.id}_aud`; const getFilesArr=(val:string|undefined):string[]=>{if(!val)return[];try{const p=JSON.parse(val);return Array.isArray(p)?p:[val]}catch{return[val]}};const uploadBtn=(label: string, key: string, accept: string, icon: any) => {const files=getFilesArr(historyAnswers[key]);return (<div className="space-y-1">{files.length>0&&<div className="flex flex-wrap gap-2">{files.map((file,idx)=>(<div key={idx} className="relative inline-block group">{accept.startsWith('image')&&<img src={file} alt="" className="max-h-28 rounded-lg object-cover"/>}{accept.startsWith('video')&&<video src={file} controls className="max-h-28 rounded-lg"/>}{accept.startsWith('audio')&&<audio src={file} controls className="h-10"/>}<button type="button" onClick={()=>{const updated=files.filter((_,i)=>i!==idx);setHistoryAnswers((p:any)=>{const a={...p};if(updated.length>0)a[key]=JSON.stringify(updated);else delete a[key];return a})}} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button></div>))}</div>}<button type="button" onClick={()=>{const MAX_FILE_SIZE=50*1024*1024;const input=document.createElement('input');input.type='file';input.accept=accept;input.onchange=(e:any)=>{const file=e.target?.files?.[0];if(!file)return;if(file.size>MAX_FILE_SIZE){toast.error('ফাইলের সাইজ ৫০MB এর বেশি হতে পারবে না');return;}const expectedType=accept.split('/')[0];if(!file.type.startsWith(expectedType+'/')){const tL:{[k:string]:string}={image:'ছবি',video:'ভিডিও',audio:'অডিও'};toast.error(`অনুগ্রহ করে একটি বৈধ ${tL[expectedType]||expectedType} ফাইল নির্বাচন করুন`);return;}const reader=new FileReader();reader.onload=(ev)=>{setHistoryAnswers((p:any)=>{const prev=p[key];let arr:string[]=[];if(prev){try{const parsed=JSON.parse(prev);arr=Array.isArray(parsed)?parsed:[prev]}catch{arr=[prev]}}return{...p,[key]:JSON.stringify([...arr,ev.target?.result as string])}});toast.success('আপলোড সফল')};reader.readAsDataURL(file)};input.click()}} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium">{icon}{label}</button></div>)}; return (<div key={q.id} className="bg-slate-50 rounded-xl p-4 space-y-3"><div className="flex items-start gap-3"><span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">{qIdx+1}</span><div className="flex-1 space-y-3"><label className="text-sm font-semibold text-slate-700">{q.question}</label>
                 {q.type === 'multiple_choice' ? (<div className="space-y-2">{(q.options||[]).map((opt: string, oIdx: number) => (<label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400"><input type="radio" name={q.id} value={opt} checked={historyAnswers[q.id]===opt} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="w-4 h-4 text-primary-600 accent-primary-600"/><span className="text-sm text-slate-700">{opt}</span></label>))}</div>)
                 : q.type === 'checkboxes' ? (<div className="space-y-2">{(q.options||[]).map((opt: string, oIdx: number) => { const checked=(historyAnswers[q.id]||'').split(',').includes(opt); return (<label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400"><input type="checkbox" value={opt} checked={checked} onChange={(e)=>{const c=(historyAnswers[q.id]||'').split(',').filter(Boolean);const u=e.target.checked?[...c,opt]:c.filter((v:string)=>v!==opt);setHistoryAnswers({...historyAnswers,[q.id]:u.join(',')});}} className="w-4 h-4 text-primary-600 rounded accent-primary-600"/><span className="text-sm text-slate-700">{opt}</span></label>);})}</div>)
                 : q.type === 'scale' ? (<div className="space-y-3"><div className="flex items-center justify-between gap-1">{(q.options||[]).map((val: string, oIdx: number) => (<button key={oIdx} type="button" onClick={()=>setHistoryAnswers({...historyAnswers,[q.id]:val})} className={`w-10 h-10 rounded-full text-sm font-medium transition-all ${historyAnswers[q.id]===val?'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{val}</button>))}</div>{q.options&&q.options.length>=2&&<div className="flex justify-between text-xs text-slate-400 px-1"><span>{q.options[0]} - {q.options[q.options.length-1]}</span></div>}</div>)
                 : q.type === 'date' ? <input type="date" value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full"/>
                 : q.type === 'time' ? <input type="time" value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full"/>
                 : q.type === 'dropdown' ? (<select value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full"><option value="">নির্বাচন করুন</option>{(q.options||[]).map((opt: string, oIdx: number) => <option key={oIdx} value={opt}>{opt}</option>)}</select>)
-                : q.type === 'file_upload' ? (<div className="flex flex-wrap gap-2">{uploadBtn('ছবি', imgKey, 'image/*', <Upload className="w-3.5 h-3.5"/>)}{uploadBtn('ভিডিও', vidKey, 'video/*', <Video className="w-3.5 h-3.5"/>)}{uploadBtn('অডিও', audKey, 'audio/*', <Upload className="w-3.5 h-3.5"/>)}</div>)
+                : q.type === 'file_upload' ? (<div className="space-y-2">{q.acceptTypes&&q.acceptTypes.length>0&&<div className="flex flex-wrap gap-1.5 items-center"><span className="text-[11px] text-slate-400 font-medium">গ্রহণযোগ্য:</span>{q.acceptTypes.includes('image')&&<span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-200">ছবি</span>}{q.acceptTypes.includes('video')&&<span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-600 border border-purple-200">ভিডিও</span>}{q.acceptTypes.includes('audio')&&<span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-600 border border-emerald-200">অডিও</span>}</div>}<div className="flex flex-wrap gap-2">{(!q.acceptTypes||q.acceptTypes.length===0||q.acceptTypes.includes('image'))&&uploadBtn('ছবি', imgKey, 'image/*', <Upload className="w-3.5 h-3.5"/>)}{(!q.acceptTypes||q.acceptTypes.length===0||q.acceptTypes.includes('video'))&&uploadBtn('ভিডিও', vidKey, 'video/*', <Video className="w-3.5 h-3.5"/>)}{(!q.acceptTypes||q.acceptTypes.length===0||q.acceptTypes.includes('audio'))&&uploadBtn('অডিও', audKey, 'audio/*', <Upload className="w-3.5 h-3.5"/>)}</div></div>)
                 : q.type === 'paragraph' ? <textarea value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full min-h-[70px] resize-y" placeholder="লিখুন..."/>
                 : <input type="text" value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full" placeholder="লিখুন..."/>}
               </div></div></div>);})}</div><div className="flex items-center justify-between pt-4 border-t border-slate-200"><Button variant="secondary" onClick={()=>setHistoryStep(-1)}>রোগ নির্বাচন</Button><Button onClick={submitHistoryAnswers}>সংরক্ষণ করুন</Button></div></>);
