@@ -58,7 +58,7 @@ const TYPE_MAP: Record<string, string> = {
   'file_upload': 'file_upload', 'Media Upload': 'file_upload',
   'date': 'date', 'Date': 'date',
   'time': 'time', 'Time': 'time',
-  'scale': 'scale', 'Linear Scale': 'scale',
+  'scale': 'scale', 'Linear Scale': 'scale', 'linear_scale': 'scale',
 };
 
 function processHistoryTemplates(templates: any[]): any[] {
@@ -66,12 +66,18 @@ function processHistoryTemplates(templates: any[]): any[] {
     (row.questions || []).map((q: any, idx: number) => {
       if (typeof q === 'string') return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
       const rawType = q.type || 'paragraph';
+      const normalizedType = TYPE_MAP[rawType] || 'text';
+      let options = q.options || [];
+      if (normalizedType === 'scale' && (!options || options.length === 0)) {
+        const max = q.scaleMax || 5;
+        options = Array.from({ length: max }, (_, i) => String(i + 1));
+      }
       return {
         id: q.id || `${row.id}_${idx}`,
         disease_name: row.disease_name,
         question: q.text || q.question || '',
-        type: TYPE_MAP[rawType] || 'text',
-        options: q.options || [],
+        type: normalizedType,
+        options,
         required: q.required || false,
         acceptTypes: q.acceptTypes || [],
       };
@@ -455,28 +461,29 @@ const statusOrder: Record<string, number> = {
   };
 
   const handleHistory = async (apt: any) => {
-    const cached = loadCachedTemplates();
-
     setHistoryPatient({ patient_id: apt.patient_id, patient_name: apt.patientName, appointment_id: apt.id });
     setHistoryAnswers({});
     setHistoryStep(-1);
 
+    const cached = loadCachedTemplates();
     if (cached) {
-      // FAST PATH: templates cached → open modal instantly, answers load in background
       setHistoryQuestions(processHistoryTemplates(cached));
       setHistoryLoading(false);
       setShowHistoryModal(true);
-
       const { data: existingHistory } = await supabase
         .from('patient_history').select('*').eq('patient_id', apt.patient_id);
-
       const existingAnswers: {[key: string]: string} = {};
       if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
       setHistoryAnswers(existingAnswers);
+      const { data: freshTemplates } = await supabase1.from('history_templates').select('*');
+      if (freshTemplates) {
+        saveCachedTemplates(freshTemplates);
+        const freshQuestions = processHistoryTemplates(freshTemplates);
+        setHistoryQuestions(freshQuestions.length > 0 ? freshQuestions : FALLBACK_HISTORY);
+      }
       return;
     }
 
-    // SLOW PATH: no cache → fetch everything with loading spinner
     setHistoryQuestions([]);
     setHistoryLoading(true);
     setShowHistoryModal(true);
@@ -510,13 +517,15 @@ const statusOrder: Record<string, number> = {
 
   const submitHistoryAnswers = async () => {
     if (!historyPatient) return;
+    const loadingToast = toast.loading('সংরক্ষণ করা হচ্ছে...');
     await supabase.from('patient_history').delete().eq('patient_id', historyPatient.patient_id);
     const answersToInsert = Object.entries(historyAnswers).map(([question_id, answer]) => {
       const q = historyQuestions.find((hq: any) => hq.id === question_id);
       return { patient_id: historyPatient.patient_id, question_id, disease_name: q?.disease_name || '', question: q?.question || '', answer };
     });
-    if (answersToInsert.length === 0) { toast.success('ইতিহাস সংরক্ষিত হয়েছে'); setShowHistoryModal(false); return; }
+    if (answersToInsert.length === 0) { toast.dismiss(loadingToast); toast.success('ইতিহাস সংরক্ষিত হয়েছে'); setShowHistoryModal(false); return; }
     const { error } = await supabase.from('patient_history').insert(answersToInsert);
+    toast.dismiss(loadingToast);
     if (!error) { toast.success('ইতিহাস সংরক্ষিত হয়েছে'); setShowHistoryModal(false); }
     else toast.error('ইতিহাস সংরক্ষণে সমস্যা হয়েছে');
   };
@@ -731,7 +740,7 @@ const statusOrder: Record<string, number> = {
               return (<><div className="flex items-center justify-between"><h3 className="text-xl font-bold text-primary-700">{currentDisease}</h3></div><div className="space-y-4">{currentQuestions.map((q: any, qIdx: number) => { const imgKey=`${q.id}_img`; const vidKey=`${q.id}_vid`; const audKey=`${q.id}_aud`; const getFilesArr=(val:string|undefined):string[]=>{if(!val)return[];try{const p=JSON.parse(val);return Array.isArray(p)?p:[val]}catch{return[val]}};const uploadBtn=(label: string, key: string, accept: string, icon: any) => {const files=getFilesArr(historyAnswers[key]);return (<div className="space-y-1">{files.length>0&&<div className="flex flex-wrap gap-2">{files.map((file,idx)=>(<div key={idx} className="relative inline-block group">{accept.startsWith('image')&&<img src={file} alt="" className="max-h-28 rounded-lg object-cover"/>}{accept.startsWith('video')&&<video src={file} controls className="max-h-28 rounded-lg"/>}{accept.startsWith('audio')&&<audio src={file} controls className="h-10"/>}<button type="button" onClick={()=>{const updated=files.filter((_,i)=>i!==idx);setHistoryAnswers((p:any)=>{const a={...p};if(updated.length>0)a[key]=JSON.stringify(updated);else delete a[key];return a})}} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button></div>))}</div>}<button type="button" onClick={()=>{const MAX_FILE_SIZE=50*1024*1024;const input=document.createElement('input');input.type='file';input.accept=accept;input.onchange=(e:any)=>{const file=e.target?.files?.[0];if(!file)return;if(file.size>MAX_FILE_SIZE){toast.error('ফাইলের সাইজ ৫০MB এর বেশি হতে পারবে না');return;}const expectedType=accept.split('/')[0];if(!file.type.startsWith(expectedType+'/')){const tL:{[k:string]:string}={image:'ছবি',video:'ভিডিও',audio:'অডিও'};toast.error(`অনুগ্রহ করে একটি বৈধ ${tL[expectedType]||expectedType} ফাইল নির্বাচন করুন`);return;}const reader=new FileReader();reader.onload=(ev)=>{setHistoryAnswers((p:any)=>{const prev=p[key];let arr:string[]=[];if(prev){try{const parsed=JSON.parse(prev);arr=Array.isArray(parsed)?parsed:[prev]}catch{arr=[prev]}}return{...p,[key]:JSON.stringify([...arr,ev.target?.result as string])}});toast.success('আপলোড সফল')};reader.readAsDataURL(file)};input.click()}} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium">{icon}{label}</button></div>)}; return (<div key={q.id} className="bg-slate-50 rounded-xl p-4 space-y-3"><div className="flex items-start gap-3"><span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">{qIdx+1}</span><div className="flex-1 space-y-3"><label className="text-sm font-semibold text-slate-700">{q.question}</label>
                 {q.type === 'multiple_choice' ? (<div className="space-y-2">{(q.options||[]).map((opt: string, oIdx: number) => (<label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400"><input type="radio" name={q.id} value={opt} checked={historyAnswers[q.id]===opt} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="w-4 h-4 text-primary-600 accent-primary-600"/><span className="text-sm text-slate-700">{opt}</span></label>))}</div>)
                 : q.type === 'checkboxes' ? (<div className="space-y-2">{(q.options||[]).map((opt: string, oIdx: number) => { const checked=(historyAnswers[q.id]||'').split(',').includes(opt); return (<label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400"><input type="checkbox" value={opt} checked={checked} onChange={(e)=>{const c=(historyAnswers[q.id]||'').split(',').filter(Boolean);const u=e.target.checked?[...c,opt]:c.filter((v:string)=>v!==opt);setHistoryAnswers({...historyAnswers,[q.id]:u.join(',')});}} className="w-4 h-4 text-primary-600 rounded accent-primary-600"/><span className="text-sm text-slate-700">{opt}</span></label>);})}</div>)
-                : q.type === 'scale' ? (<div className="space-y-3"><div className="flex items-center justify-between gap-1">{(q.options||[]).map((val: string, oIdx: number) => (<button key={oIdx} type="button" onClick={()=>setHistoryAnswers({...historyAnswers,[q.id]:val})} className={`w-10 h-10 rounded-full text-sm font-medium transition-all ${historyAnswers[q.id]===val?'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{val}</button>))}</div>{q.options&&q.options.length>=2&&<div className="flex justify-between text-xs text-slate-400 px-1"><span>{q.options[0]} - {q.options[q.options.length-1]}</span></div>}</div>)
+                : q.type === 'scale' ? (<div className="space-y-3"><div className="flex items-center justify-between gap-1 w-full">{(q.options||[]).map((val: string, oIdx: number) => {const count=(q.options||[]).length;const size=count>7?'w-8 h-8 text-xs':'w-10 h-10 text-sm';return (<button key={oIdx} type="button" onClick={()=>setHistoryAnswers({...historyAnswers,[q.id]:val})} className={`${size} rounded-full font-medium transition-all flex-shrink-0 ${historyAnswers[q.id]===val?'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{val}</button>);})}</div>{q.options&&q.options.length>=2&&<div className="flex justify-between text-xs text-slate-400 px-1"><span>{q.options[0]} - {q.options[q.options.length-1]}</span></div>}</div>)
                 : q.type === 'date' ? <input type="date" value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full"/>
                 : q.type === 'time' ? <input type="time" value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full"/>
                 : q.type === 'dropdown' ? (<select value={historyAnswers[q.id]||''} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="input w-full"><option value="">নির্বাচন করুন</option>{(q.options||[]).map((opt: string, oIdx: number) => <option key={oIdx} value={opt}>{opt}</option>)}</select>)

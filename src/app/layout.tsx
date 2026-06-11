@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <LoadingProvider>
             {children}
-            <Toaster position="top-center" />
+            <Toaster position="top-center" containerStyle={{ zIndex: 99999 }} />
           </LoadingProvider>
         </AuthProvider>
       </body>

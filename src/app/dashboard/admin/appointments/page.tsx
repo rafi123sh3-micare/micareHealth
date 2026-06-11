@@ -77,7 +77,7 @@ const TYPE_MAP: Record<string, string> = {
   'file_upload': 'file_upload', 'Media Upload': 'file_upload',
   'date': 'date', 'Date': 'date',
   'time': 'time', 'Time': 'time',
-  'scale': 'scale', 'Linear Scale': 'scale',
+  'scale': 'scale', 'Linear Scale': 'scale', 'linear_scale': 'scale',
 };
 
 function processHistoryTemplates(templates: any[]): any[] {
@@ -85,12 +85,18 @@ function processHistoryTemplates(templates: any[]): any[] {
     (row.questions || []).map((q: any, idx: number) => {
       if (typeof q === 'string') return { id: `${row.id}_${idx}`, disease_name: row.disease_name, question: q, type: 'paragraph', options: [], required: false };
       const rawType = q.type || 'paragraph';
+      const normalizedType = TYPE_MAP[rawType] || 'text';
+      let options = q.options || [];
+      if (normalizedType === 'scale' && (!options || options.length === 0)) {
+        const max = q.scaleMax || 5;
+        options = Array.from({ length: max }, (_, i) => String(i + 1));
+      }
       return {
         id: q.id || `${row.id}_${idx}`,
         disease_name: row.disease_name,
         question: q.text || q.question || '',
-        type: TYPE_MAP[rawType] || 'text',
-        options: q.options || [],
+        type: normalizedType,
+        options,
         required: q.required || false,
         acceptTypes: q.acceptTypes || [],
       };
@@ -652,8 +658,6 @@ if (aptError) {
   };
 
   const handleHistory = async (apt: any) => {
-    const cached = loadCachedTemplates();
-
     setHistoryPatient({
       patient_id: apt.patient_id,
       patient_name: apt.patientName,
@@ -662,22 +666,25 @@ if (aptError) {
     setHistoryAnswers({});
     setHistoryStep(-1);
 
+    const cached = loadCachedTemplates();
     if (cached) {
-      // FAST PATH: templates cached → open modal instantly, answers load in background
       setHistoryQuestions(processHistoryTemplates(cached));
       setHistoryLoading(false);
       setShowHistoryModal(true);
-
       const { data: existingHistory } = await supabase
         .from('patient_history').select('*').eq('patient_id', apt.patient_id);
-
       const existingAnswers: {[key: string]: string} = {};
       if (existingHistory) existingHistory.forEach((h: any) => { existingAnswers[h.question_id] = h.answer; });
       setHistoryAnswers(existingAnswers);
+      const { data: freshTemplates } = await supabase1.from('history_templates').select('*');
+      if (freshTemplates) {
+        saveCachedTemplates(freshTemplates);
+        const freshQuestions = processHistoryTemplates(freshTemplates);
+        setHistoryQuestions(freshQuestions.length > 0 ? freshQuestions : FALLBACK_HISTORY);
+      }
       return;
     }
 
-    // SLOW PATH: no cache → fetch everything with loading spinner
     setHistoryQuestions([]);
     setHistoryLoading(true);
     setShowHistoryModal(true);
@@ -712,6 +719,8 @@ if (aptError) {
   const submitHistoryAnswers = async () => {
     if (!historyPatient) return;
 
+    const loadingToast = toast.loading('সংরক্ষণ করা হচ্ছে...');
+
     await supabase
       .from('patient_history')
       .delete()
@@ -729,6 +738,7 @@ if (aptError) {
     });
 
     if (answersToInsert.length === 0) {
+      toast.dismiss(loadingToast);
       toast.success('ইতিহাস সংরক্ষিত হয়েছে');
       setShowHistoryModal(false);
       return;
@@ -738,6 +748,7 @@ if (aptError) {
       .from('patient_history')
       .insert(answersToInsert);
 
+    toast.dismiss(loadingToast);
     if (!error) {
       toast.success('ইতিহাস সংরক্ষিত হয়েছে');
       setShowHistoryModal(false);
@@ -1440,21 +1451,25 @@ if (aptError) {
                                   </div>
                                 ) : q.type === 'scale' ? (
                                   <div className="space-y-3">
-                                    <div className="flex items-center justify-between gap-1">
-                                      {(q.options || []).map((val: string, oIdx: number) => (
-                                        <button
-                                          key={oIdx}
-                                          type="button"
-                                          onClick={() => setHistoryAnswers({ ...historyAnswers, [q.id]: val })}
-                                          className={`w-10 h-10 rounded-full text-sm font-medium transition-all ${
-                                            historyAnswers[q.id] === val
-                                              ? 'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110'
-                                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                          }`}
-                                        >
-                                          {val}
-                                        </button>
-                                      ))}
+                                    <div className="flex items-center justify-between gap-1 w-full">
+                                      {(q.options || []).map((val: string, oIdx: number) => {
+                                        const count = (q.options || []).length;
+                                        const size = count > 7 ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
+                                        return (
+                                          <button
+                                            key={oIdx}
+                                            type="button"
+                                            onClick={() => setHistoryAnswers({ ...historyAnswers, [q.id]: val })}
+                                            className={`${size} rounded-full font-medium transition-all flex-shrink-0 ${
+                                              historyAnswers[q.id] === val
+                                                ? 'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110'
+                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            }`}
+                                          >
+                                            {val}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
                                     {q.options && q.options.length >= 2 && (
                                       <div className="flex justify-between text-xs text-slate-400 px-1">
