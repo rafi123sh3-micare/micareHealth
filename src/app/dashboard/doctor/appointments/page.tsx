@@ -521,7 +521,8 @@ const statusOrder: Record<string, number> = {
     const loadingToast = toast.loading('সংরক্ষণ করা হচ্ছে...');
     await supabase.from('patient_history').delete().eq('patient_id', historyPatient.patient_id);
     const answersToInsert = Object.entries(historyAnswers).map(([question_id, answer]) => {
-      const q = historyQuestions.find((hq: any) => hq.id === question_id);
+      const baseId = question_id.replace(/_(img|vid|aud)$/, '');
+      const q = historyQuestions.find((hq: any) => hq.id === baseId);
       return { patient_id: historyPatient.patient_id, question_id, disease_name: q?.disease_name || '', question: q?.question || '', answer };
     });
     if (answersToInsert.length === 0) { toast.dismiss(loadingToast); toast.success('ইতিহাস সংরক্ষিত হয়েছে'); setShowHistoryModal(false); return; }

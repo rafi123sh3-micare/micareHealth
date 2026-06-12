@@ -728,7 +728,8 @@ if (aptError) {
       .eq('patient_id', historyPatient.patient_id);
 
     const answersToInsert = Object.entries(historyAnswers).map(([question_id, answer]) => {
-      const q = historyQuestions.find((hq: any) => hq.id === question_id);
+      const baseId = question_id.replace(/_(img|vid|aud)$/, '');
+      const q = historyQuestions.find((hq: any) => hq.id === baseId);
       return {
         patient_id: historyPatient.patient_id,
         question_id,
