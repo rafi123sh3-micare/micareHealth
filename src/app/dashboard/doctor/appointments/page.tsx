@@ -13,7 +13,7 @@ import { QRCode } from '@/components/ui/QRCode';
 import DatePicker from '@/components/ui/DatePicker';
 import toast from 'react-hot-toast';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateExpectedTime } from '@/lib/sms';
 import { motion } from 'framer-motion';
 
 const statusConfig = {
@@ -212,6 +212,34 @@ const statusOrder: Record<string, number> = {
     setLoading(false);
   }
 
+  function getExpectedTimes(list: any[]) {
+    const groups: Record<string, any[]> = {};
+    list.forEach(apt => {
+      const key = `${apt.doctor_id}_${apt.date}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(apt);
+    });
+    const times: Record<string, string> = {};
+    Object.values(groups).forEach((group: any[]) => {
+      const sorted = [...group].sort((a, b) => {
+        if (a.serial_number && b.serial_number) return a.serial_number.localeCompare(b.serial_number);
+        return (a.created_at || '').localeCompare(b.created_at || '');
+      });
+      const firstTime = (sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
+      const baseHours = firstTime[0] || 9;
+      const baseMinutes = firstTime[1] || 0;
+      sorted.forEach((apt, idx) => {
+        const totalMin = baseHours * 60 + baseMinutes + idx * 5;
+        const h = Math.floor(totalMin / 60) % 24;
+        const m = totalMin % 60;
+        const period = h >= 12 ? 'PM' : 'AM';
+        const disp = h % 12 || 12;
+        times[apt.id] = `${String(disp).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+      });
+    });
+    return times;
+  }
+
   const filteredAppointments = appointments.filter(apt => {
     if (filterDate && apt.date !== filterDate) return false;
     if (filterStatus && apt.displayStatus !== filterStatus) return false;
@@ -222,6 +250,8 @@ const statusOrder: Record<string, number> = {
     }
     return true;
   });
+
+  const expectedTimes = getExpectedTimes(filteredAppointments);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -434,6 +464,7 @@ const statusOrder: Record<string, number> = {
         patient_id: newPatient.id, doctor_id: doctorData.id, date: walkinPatient.date,
         time: appointmentTime, status: 'confirmed', type: walkinPatient.type,
         reason: walkinPatient.reason || 'ওয়াক-ইন', serial_number: serialNumber,
+        patient_mobile: walkinPatient.phone || '',
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
       const { data: createdApt } = await supabase.from('appointments').select('*, patients(*), doctors(*)').eq('patient_id', newPatient.id).order('created_at', { ascending: false }).limit(1).single();
@@ -592,7 +623,8 @@ const statusOrder: Record<string, number> = {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">সিরিয়াল</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">রোগী</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">মোবাইল নম্বর</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ ও সময়</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-600">সম্পন্ন</th>
@@ -602,7 +634,7 @@ const statusOrder: Record<string, number> = {
               <tbody>
                 {filteredAppointments.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center">
+                    <td colSpan={9} className="px-4 py-12 text-center">
                       <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
                         <Calendar className="w-7 h-7 text-slate-400" />
                       </div>
@@ -619,11 +651,10 @@ const statusOrder: Record<string, number> = {
                       <td className="px-4 py-3"><span className="font-medium text-slate-900">{apt.patientName}</span></td>
                       <td className="px-4 py-3"><div className="text-xs text-slate-500">{apt.patientPhone || '-'}</div></td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>{formatDate(apt.date)}</span>
-                          {apt.time && <span className="text-xs text-slate-400">- {formatTime(apt.time)}</span>}
-                        </div>
+                        <span className="text-slate-600">{formatDate(apt.date)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-sm font-semibold text-primary-600">{expectedTimes[apt.id] || '-'}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs ${apt.type === 'teleconsult' ? 'text-purple-600' : 'text-slate-600'}`}>
@@ -713,8 +744,8 @@ const statusOrder: Record<string, number> = {
         {qrAppointment && (
           <div className="space-y-4 text-center">
             <div className="flex justify-center" id="qr-code-print-area"><QRCode value={`${window.location.origin}/dashboard/patient/appointments?id=${qrAppointment.id}`} size={200} /></div>
-            <div className="space-y-2"><p className="font-semibold">{qrAppointment.patients?.name}</p><p className="text-sm text-slate-500">{formatDate(qrAppointment.date)} - {qrAppointment.time?.substring(0, 5)}</p></div>
-            <Button onClick={() => { const pw = window.open('','_blank'); if(pw) { const qs=document.querySelector('#qr-code-print-area svg'); const sh=qs?qs.outerHTML:''; pw.document.write(`<html><head><title>QR কোড</title></head><body style="text-align:center;padding:20px;font-family:sans-serif;"><h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2><p>রোগী: ${qrAppointment.patients?.name}</p><p>তারিখ: ${formatDate(qrAppointment.date)}</p><p>সময়: ${qrAppointment.time?.substring(0,5)}</p>${sh}</body></html>`); pw.document.close(); pw.focus(); pw.print(); }}} className="w-full">প্রিন্ট করুন</Button>
+            <div className="space-y-2"><p className="font-semibold">{qrAppointment.patients?.name}</p><p className="text-sm text-slate-500">{formatDate(qrAppointment.date)}</p><p className="text-sm font-mono font-semibold text-primary-600">{calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number)}</p></div>
+            <Button onClick={() => { const pw = window.open('','_blank'); if(pw) { const qs=document.querySelector('#qr-code-print-area svg'); const sh=qs?qs.outerHTML:''; const exp=calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number); pw.document.write(`<html><head><title>QR কোড</title></head><body style="text-align:center;padding:20px;font-family:sans-serif;"><h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2><p>রোগী: ${qrAppointment.patients?.name}</p><p>তারিখ: ${formatDate(qrAppointment.date)}</p><p>সময়: ${exp}</p>${sh}</body></html>`); pw.document.close(); pw.focus(); pw.print(); }}} className="w-full">প্রিন্ট করুন</Button>
           </div>
         )}
       </Modal>
@@ -739,7 +770,7 @@ const statusOrder: Record<string, number> = {
               if (historyStep === -1) return (<div className="grid grid-cols-2 gap-3">{diseaseNames.map((name, idx) => (<button key={name} onClick={() => setHistoryStep(idx)} className="p-5 rounded-xl border-2 border-slate-200 hover:border-primary-400 hover:bg-primary-50 transition-all text-left"><h4 className="font-bold text-primary-700 text-lg">{name}</h4><p className="text-xs text-slate-500 mt-1">{grouped[name].length} টি প্রশ্ন</p></button>))}</div>);
               const currentDisease = diseaseNames[historyStep];
               const currentQuestions = grouped[currentDisease];
-              return (<><div className="flex items-center justify-between"><h3 className="text-xl font-bold text-primary-700">{currentDisease}</h3></div><div className="space-y-4">{currentQuestions.map((q: any, qIdx: number) => { const imgKey=`${q.id}_img`; const vidKey=`${q.id}_vid`; const audKey=`${q.id}_aud`; const getFilesArr=(val:string|undefined):string[]=>{if(!val)return[];try{const p=JSON.parse(val);return Array.isArray(p)?p:[val]}catch{return[val]}};const uploadBtn=(label: string, key: string, accept: string, icon: any) => {const files=getFilesArr(historyAnswers[key]);return (<div className="space-y-1">{files.length>0&&<div className="flex flex-wrap gap-2">{files.map((file,idx)=>(<div key={idx} className="relative inline-block group">{accept.startsWith('image')&&<img src={file} alt="" className="max-h-28 rounded-lg object-cover"/>}{accept.startsWith('video')&&<video src={file} controls className="max-h-28 rounded-lg"/>}{accept.startsWith('audio')&&<audio src={file} controls className="h-10"/>}<button type="button" onClick={()=>{const updated=files.filter((_,i)=>i!==idx);setHistoryAnswers((p:any)=>{const a={...p};if(updated.length>0)a[key]=JSON.stringify(updated);else delete a[key];return a})}} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button></div>))}</div>}<button type="button" onClick={()=>{const MAX_FILE_SIZE=50*1024*1024;const input=document.createElement('input');input.type='file';input.accept=accept;input.onchange=async(e:any)=>{const file=e.target?.files?.[0];if(!file)return;if(file.size>MAX_FILE_SIZE){toast.error('ফাইলের সাইজ ৫০MB এর বেশি হতে পারবে না');return;}const expectedType=accept.split('/')[0];if(!file.type.startsWith(expectedType+'/')){const tL:{[k:string]:string}={image:'ছবি',video:'ভিডিও',audio:'অডিও'};toast.error(`অনুগ্রহ করে একটি বৈধ ${tL[expectedType]||expectedType} ফাইল নির্বাচন করুন`);return;}const loadingToastId=toast.loading('আপলোড হচ্ছে...');try{const url=await uploadToCloudinary(file);setHistoryAnswers((p:any)=>{const prev=p[key];let arr:string[]=[];if(prev){try{const parsed=JSON.parse(prev);arr=Array.isArray(parsed)?parsed:[prev]}catch{arr=[prev]}}return{...p,[key]:JSON.stringify([...arr,url])}});toast.dismiss(loadingToastId);toast.success('আপলোড সফল')}catch(err){toast.dismiss(loadingToastId);toast.error('আপলোড ব্যর্থ হয়েছে')}};input.click()}} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium">{icon}{label}</button></div>)}; return (<div key={q.id} className="bg-slate-50 rounded-xl p-4 space-y-3"><div className="flex items-start gap-3"><span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">{qIdx+1}</span><div className="flex-1 space-y-3"><label className="text-sm font-semibold text-slate-700">{q.question}</label>
+              return (<><div className="flex items-center justify-between"><h3 className="text-xl font-bold text-primary-700">{currentDisease}</h3></div><div className="space-y-4">{currentQuestions.map((q: any, qIdx: number) => { const imgKey=`${q.id}_img`; const vidKey=`${q.id}_vid`; const audKey=`${q.id}_aud`; const getFilesArr=(val:string|undefined):string[]=>{if(!val)return[];try{const p=JSON.parse(val);return Array.isArray(p)?p:[val]}catch{return[val]}};const uploadBtn=(label: string, key: string, accept: string, icon: any) => {const files=getFilesArr(historyAnswers[key]);return (<div className="space-y-1">{files.length>0&&<div className="flex flex-wrap gap-2">{files.map((file,idx)=>(<div key={idx} className="relative inline-block group">{accept.startsWith('image')&&<img src={file} alt="" className="max-h-28 rounded-lg object-cover"/>}{accept.startsWith('video')&&<video src={file} controls className="max-h-28 rounded-lg"/>}{accept.startsWith('audio')&&<audio src={file} controls className="h-10"/>}<button type="button" onClick={()=>{const updated=files.filter((_,i)=>i!==idx);setHistoryAnswers((p:any)=>{const a={...p};if(updated.length>0)a[key]=JSON.stringify(updated);else delete a[key];return a})}} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button></div>))}</div>}<button type="button" onClick={()=>{const MAX_FILE_SIZE=50*1024*1024;const input=document.createElement('input');input.type='file';input.accept=accept;input.onchange=async(e:any)=>{const file=e.target?.files?.[0];if(!file)return;if(file.size>MAX_FILE_SIZE){toast.error('ফাইলের সাইজ ৫০MB এর বেশি হতে পারবে না');return;}const expectedType=accept.split('/')[0];if(!file.type.startsWith(expectedType+'/')){const tL:{[k:string]:string}={image:'ছবি',video:'ভিডিও',audio:'অডিও'};toast.error(`অনুগ্রহ করে একটি বৈধ ${tL[expectedType]||expectedType} ফাইল নির্বাচন করুন`);return;}const loadingToastId=toast.loading('আপলোড হচ্ছে...');try{const url=await uploadToCloudinary(file);setHistoryAnswers((p:any)=>{const prev=p[key];let arr:string[]=[];if(prev){try{const parsed=JSON.parse(prev);arr=Array.isArray(parsed)?parsed:[prev]}catch{arr=[prev]}}return{...p,[key]:JSON.stringify([...arr,url])}});toast.dismiss(loadingToastId);toast.success('আপলোড সফল')}catch(err:any){toast.dismiss(loadingToastId);toast.error(err?.message?.includes('Cloudinary')?err.message:'আপলোড ব্যর্থ হয়েছে')}};input.click()}} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors text-xs font-medium">{icon}{label}</button></div>)}; return (<div key={q.id} className="bg-slate-50 rounded-xl p-4 space-y-3"><div className="flex items-start gap-3"><span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">{qIdx+1}</span><div className="flex-1 space-y-3"><label className="text-sm font-semibold text-slate-700">{q.question}</label>
                 {q.type === 'multiple_choice' ? (<div className="space-y-2">{(q.options||[]).map((opt: string, oIdx: number) => (<label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400"><input type="radio" name={q.id} value={opt} checked={historyAnswers[q.id]===opt} onChange={(e)=>setHistoryAnswers({...historyAnswers,[q.id]:e.target.value})} className="w-4 h-4 text-primary-600 accent-primary-600"/><span className="text-sm text-slate-700">{opt}</span></label>))}</div>)
                 : q.type === 'checkboxes' ? (<div className="space-y-2">{(q.options||[]).map((opt: string, oIdx: number) => { const checked=(historyAnswers[q.id]||'').split(',').includes(opt); return (<label key={oIdx} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary-300 cursor-pointer transition-all has-[:checked]:bg-primary-50 has-[:checked]:border-primary-400"><input type="checkbox" value={opt} checked={checked} onChange={(e)=>{const c=(historyAnswers[q.id]||'').split(',').filter(Boolean);const u=e.target.checked?[...c,opt]:c.filter((v:string)=>v!==opt);setHistoryAnswers({...historyAnswers,[q.id]:u.join(',')});}} className="w-4 h-4 text-primary-600 rounded accent-primary-600"/><span className="text-sm text-slate-700">{opt}</span></label>);})}</div>)
                 : q.type === 'scale' ? (<div className="space-y-3"><div className="flex items-center justify-between gap-1 w-full">{(q.options||[]).map((val: string, oIdx: number) => {const count=(q.options||[]).length;const size=count>7?'w-8 h-8 text-xs':'w-10 h-10 text-sm';return (<button key={oIdx} type="button" onClick={()=>setHistoryAnswers({...historyAnswers,[q.id]:val})} className={`${size} rounded-full font-medium transition-all flex-shrink-0 ${historyAnswers[q.id]===val?'bg-primary-500 text-white shadow-md shadow-primary-500/30 scale-110':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{val}</button>);})}</div>{q.options&&q.options.length>=2&&<div className="flex justify-between text-xs text-slate-400 px-1"><span>{q.options[0]} - {q.options[q.options.length-1]}</span></div>}</div>)

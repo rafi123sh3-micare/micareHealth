@@ -40,6 +40,29 @@ export async function sendSMS(phone: string, message: string): Promise<boolean> 
   }
 }
 
+export function calculateExpectedTime(appointmentTime: string, serialNumber: string): string {
+  const baseTime = (appointmentTime || '09:00').split(' - ')[0];
+  const [rawH, rawM] = baseTime.split(':').map(Number);
+  const baseH = rawH || 9;
+  const baseM = rawM || 0;
+
+  let position = 0;
+  if (serialNumber) {
+    const match = serialNumber.match(/-(\d+)/);
+    if (match) {
+      const seq = parseInt(match[1], 10);
+      if (!isNaN(seq)) position = Math.max(0, seq - 1);
+    }
+  }
+
+  const totalMin = baseH * 60 + baseM + position * 5;
+  const h = Math.floor(totalMin / 60) % 24;
+  const m = totalMin % 60;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const disp = h % 12 || 12;
+  return `${String(disp).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+}
+
 export function buildConfirmationSMS(
   doctorName: string,
   date: string,
@@ -47,16 +70,12 @@ export function buildConfirmationSMS(
   serialNumber: string
 ): string {
   const formattedDate = formatDateBangla(date);
-  const formattedTime = time ? time.substring(0, 5) : '';
+  const expectedTime = calculateExpectedTime(time, serialNumber);
 
   return `আপনার অ্যাপয়েন্টমেন্ট নিশ্চিত করা হয়েছে।
-
 ${doctorName}
-
 তারিখ: ${formattedDate}
-
-সময়: ${formattedTime}
-
+সময়: ${expectedTime}
 Serial Number: ${serialNumber}`;
 }
 

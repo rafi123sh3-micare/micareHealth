@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { QRCode } from '@/components/ui/QRCode';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateExpectedTime } from '@/lib/sms';
 import DatePicker from '@/components/ui/DatePicker';
 import { motion } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
@@ -308,6 +308,34 @@ export default function AdminAppointments() {
     return 'upcoming';
   };
 
+  function getExpectedTimes(list: any[]) {
+    const groups: Record<string, any[]> = {};
+    list.forEach(apt => {
+      const key = `${apt.doctor_id}_${apt.date}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(apt);
+    });
+    const times: Record<string, string> = {};
+    Object.values(groups).forEach((group: any[]) => {
+      const sorted = [...group].sort((a, b) => {
+        if (a.serial_number && b.serial_number) return a.serial_number.localeCompare(b.serial_number);
+        return (a.created_at || '').localeCompare(b.created_at || '');
+      });
+      const firstTime = (sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
+      const baseHours = firstTime[0] || 9;
+      const baseMinutes = firstTime[1] || 0;
+      sorted.forEach((apt, idx) => {
+        const totalMin = baseHours * 60 + baseMinutes + idx * 5;
+        const h = Math.floor(totalMin / 60) % 24;
+        const m = totalMin % 60;
+        const period = h >= 12 ? 'PM' : 'AM';
+        const disp = h % 12 || 12;
+        times[apt.id] = `${String(disp).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+      });
+    });
+    return times;
+  }
+
   const filteredAppointments = appointments.filter(apt => {
     if (filterDate && apt.date !== filterDate) return false;
     if (filterDoctor && apt.doctor_id !== filterDoctor) return false;
@@ -320,6 +348,8 @@ export default function AdminAppointments() {
     }
     return true;
   });
+
+  const expectedTimes = getExpectedTimes(filteredAppointments);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -589,6 +619,7 @@ try {
           type: walkinPatient.type,
           reason: walkinPatient.reason || 'ওয়াক-ইন',
           serial_number: serialNumber,
+          patient_mobile: walkinPatient.phone || '',
         });
 
       console.log('Appointment insert result:', { error: aptError });
@@ -852,7 +883,8 @@ if (aptError) {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">রোগী</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">মোবাইল নম্বর</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ডাক্তার</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ ও সময়</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-600">সম্পন্ন</th>
@@ -862,7 +894,7 @@ if (aptError) {
               <tbody>
                 {filteredAppointments.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center">
+                    <td colSpan={10} className="px-4 py-12 text-center">
                       <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
                         <Calendar className="w-7 h-7 text-slate-400" />
                       </div>
@@ -897,10 +929,10 @@ if (aptError) {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>{formatDate(apt.date)}</span>
-                        </div>
+                        <span className="text-slate-600">{formatDate(apt.date)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-sm font-semibold text-primary-600">{expectedTimes[apt.id] || '-'}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs ${apt.type === 'teleconsult' ? 'text-purple-600' : 'text-slate-600'}`}>
@@ -1205,7 +1237,8 @@ if (aptError) {
             </div>
             <div className="space-y-2">
               <p className="font-semibold">{qrAppointment.patients?.name}</p>
-              <p className="text-sm text-slate-500">{formatDate(qrAppointment.date)} - {qrAppointment.time?.substring(0, 5)}</p>
+              <p className="text-sm text-slate-500">{formatDate(qrAppointment.date)}</p>
+              <p className="text-sm font-mono font-semibold text-primary-600">{calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number)}</p>
             </div>
               <Button
                   onClick={() => {
@@ -1213,6 +1246,7 @@ if (aptError) {
                     if (printWindow) {
                       const qrSvg = document.querySelector('#qr-code-print-area svg');
                       const svgHtml = qrSvg ? qrSvg.outerHTML : '';
+                      const expected = calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number);
                       printWindow.document.write(`
                         <html>
                           <head>
@@ -1222,7 +1256,7 @@ if (aptError) {
                             <h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2>
                             <p>রোগী: ${qrAppointment.patients?.name}</p>
                             <p>তারিখ: ${formatDate(qrAppointment.date)}</p>
-                            <p>সময়: ${qrAppointment.time?.substring(0, 5)}</p>
+                            <p>সময়: ${expected}</p>
                             ${svgHtml}
                           </body>
                         </html>
@@ -1392,9 +1426,9 @@ if (aptError) {
                                       });
                                       toast.dismiss(loadingToastId);
                                       toast.success('আপলোড সফল');
-                                    } catch (err) {
+                                    } catch (err: any) {
                                       toast.dismiss(loadingToastId);
-                                      toast.error('আপলোড ব্যর্থ হয়েছে');
+                                      toast.error(err?.message?.includes('Cloudinary') ? err.message : 'আপলোড ব্যর্থ হয়েছে');
                                     }
                                   };
                                   input.click();

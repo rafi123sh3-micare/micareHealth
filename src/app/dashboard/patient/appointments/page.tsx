@@ -12,6 +12,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import DatePicker from '@/components/ui/DatePicker';
 import { useSearchParams } from 'next/navigation';
+import { calculateExpectedTime } from '@/lib/sms';
 
 export default function PatientAppointments() {
   const searchParams = useSearchParams();
@@ -412,7 +413,7 @@ const statusOrder: Record<string, number> = {
                </div>
                <div className="space-y-2">
                  <p className="font-semibold">{selectedApt.doctor}</p>
-                 <p className="text-sm text-slate-500">{formatDate(selectedApt.date)} - {selectedApt.time_range}</p>
+                 <p className="text-sm text-slate-500">{formatDate(selectedApt.date)} - {calculateExpectedTime(selectedApt.time_range.split(' - ')[0], selectedApt.serial_number)}</p>
                </div>
                <Button
                  onClick={() => {
@@ -430,7 +431,7 @@ const statusOrder: Record<string, number> = {
                            <h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2>
                            <p>ডাক্তার: ${selectedApt.doctor}</p>
                            <p>তারিখ: ${formatDate(selectedApt.date)}</p>
-                           <p>সময়: ${selectedApt.time_range}</p>
+                           <p>সময়: ${calculateExpectedTime(selectedApt.time_range.split(' - ')[0], selectedApt.serial_number)}</p>
                            <div id="qrcode"></div>
                            <script type="text/babel">
                              const QrCode = window.QRCodeSVG.default || window.QRCodeSVG;
