@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { QRCode } from '@/components/ui/QRCode';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS, calculateExpectedTime } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS } from '@/lib/sms';
 import DatePicker from '@/components/ui/DatePicker';
 import { motion } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
@@ -256,8 +256,44 @@ export default function AdminAppointments() {
     }
 
     if (apts) {
+      // Fetch all active schedules to resolve schedule start time for doctors on the appointment dates
+      let scheduleData: any[] = [];
+      try {
+        const { data } = await supabase
+          .from('schedules')
+          .select('doctor_id, start_time, end_time, selected_days, start_date, end_date, date')
+          .eq('status', 'active');
+        if (data) scheduleData = data;
+      } catch (e) {
+        console.error('Error prefetching schedules:', e);
+      }
+
       const mapped = apts.map((apt: any) => {
         const schedule = apt.schedules?.[0];
+        let scheduleStart: string | null = null;
+        if (scheduleData.length > 0) {
+          const doctorSchedules = scheduleData.filter((s: any) => s.doctor_id === apt.doctor_id);
+          let match: any = null;
+          const oldMatch = doctorSchedules.find((s: any) => s.date === apt.date);
+          if (oldMatch) {
+            match = oldMatch;
+          } else {
+            const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+            const aptDate = new Date(apt.date + 'T00:00:00');
+            const dayName = dayMap[aptDate.getDay()];
+            const dayMatch = doctorSchedules.find((s: any) => {
+              if (!s.selected_days?.includes(dayName)) return false;
+              const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+              const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+              return startOk && endOk;
+            });
+            if (dayMatch) match = dayMatch;
+          }
+          if (match && match.start_time) {
+            scheduleStart = match.start_time.substring(0, 5);
+          }
+        }
+
         return {
           ...apt,
           doctorName: apt.doctors?.name || '-',
@@ -265,6 +301,7 @@ export default function AdminAppointments() {
           patientName: apt.patients?.name || '-',
           start_time: schedule?.start_time || null,
           end_time: schedule?.end_time || null,
+          scheduleStart,
           displayStatus: apt.status === 'pending' ? 'pending' :
             apt.status === 'confirmed' ? 'confirmed' :
               apt.status === 'cancelled' ? 'cancelled' :
@@ -321,7 +358,8 @@ export default function AdminAppointments() {
         if (a.serial_number && b.serial_number) return a.serial_number.localeCompare(b.serial_number);
         return (a.created_at || '').localeCompare(b.created_at || '');
       });
-      const firstTime = (sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
+      const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
+      const firstTime = (baseScheduleStart || sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
       const baseHours = firstTime[0] || 9;
       const baseMinutes = firstTime[1] || 0;
       sorted.forEach((apt, idx) => {
@@ -425,8 +463,8 @@ export default function AdminAppointments() {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
               apt.date,
-              apt.time || '',
-              apt.serial_number || ''
+              apt.scheduleStart || apt.time || '',
+              updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);
           }
@@ -640,8 +678,45 @@ if (aptError) {
        .limit(1)
        .single();
 
+      // Fetch doctor's schedule start time on the appointment date
+      let scheduleStart = null;
+      try {
+        const { data: scheduleData } = await supabase
+          .from('schedules')
+          .select('start_time, selected_days, start_date, end_date, date')
+          .eq('doctor_id', walkinPatient.doctor_id)
+          .eq('status', 'active');
+
+        if (scheduleData && scheduleData.length > 0) {
+          let match: any = null;
+          const oldMatch = scheduleData.find((s: any) => s.date === walkinPatient.date);
+          if (oldMatch) {
+            match = oldMatch;
+          } else {
+            const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+            const aptDate = new Date(walkinPatient.date + 'T00:00:00');
+            const dayName = dayMap[aptDate.getDay()];
+            const dayMatch = scheduleData.find((s: any) => {
+              if (!s.selected_days?.includes(dayName)) return false;
+              const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+              const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+              return startOk && endOk;
+            });
+            if (dayMatch) match = dayMatch;
+          }
+          if (match && match.start_time) {
+            scheduleStart = match.start_time.substring(0, 5);
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching schedule start for walkin:', e);
+      }
+
       toast.success('অ্যাপয়েন্টমেন্ট যোগ হয়েছে');
-      setQRAppointment(createdApt);
+      setQRAppointment({
+        ...createdApt,
+        scheduleStart: scheduleStart
+      });
       setShowQRModal(true);
 
       try {
@@ -651,7 +726,7 @@ if (aptError) {
           const smsText = buildConfirmationSMS(
             walkinDoctor?.name || '',
             walkinPatient.date,
-            appointmentTime,
+            scheduleStart || appointmentTime,
             serialNumber || ''
           );
           await sendSMS(walkinPhone, smsText);
@@ -1238,7 +1313,6 @@ if (aptError) {
             <div className="space-y-2">
               <p className="font-semibold">{qrAppointment.patients?.name}</p>
               <p className="text-sm text-slate-500">{formatDate(qrAppointment.date)}</p>
-              <p className="text-sm font-mono font-semibold text-primary-600">{calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number)}</p>
             </div>
               <Button
                   onClick={() => {
@@ -1246,7 +1320,6 @@ if (aptError) {
                     if (printWindow) {
                       const qrSvg = document.querySelector('#qr-code-print-area svg');
                       const svgHtml = qrSvg ? qrSvg.outerHTML : '';
-                      const expected = calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number);
                       printWindow.document.write(`
                         <html>
                           <head>
@@ -1256,7 +1329,6 @@ if (aptError) {
                             <h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2>
                             <p>রোগী: ${qrAppointment.patients?.name}</p>
                             <p>তারিখ: ${formatDate(qrAppointment.date)}</p>
-                            <p>সময়: ${expected}</p>
                             ${svgHtml}
                           </body>
                         </html>

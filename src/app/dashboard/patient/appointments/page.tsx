@@ -64,17 +64,40 @@ export default function PatientAppointments() {
         const mapped = await Promise.all(apts.map(async (apt: any) => {
           const startTime = apt.time;
           let timeRange = startTime ? startTime.substring(0, 5) : '';
+          let scheduleStart: string | null = null;
 
           try {
-            const { data: schedules } = await supabase
+            const { data: scheduleData } = await supabase
               .from('schedules')
-              .select('end_time')
+              .select('start_time, end_time, selected_days, start_date, end_date, date')
               .eq('doctor_id', apt.doctor_id)
-              .eq('date', apt.date)
-              .maybeSingle();
+              .eq('status', 'active');
 
-            if (schedules?.end_time) {
-              timeRange = `${startTime.substring(0, 5)} - ${schedules.end_time.substring(0, 5)}`;
+            if (scheduleData && scheduleData.length > 0) {
+              let match: any = null;
+
+              // Try old schema: direct date match
+              const oldMatch = scheduleData.find((s: any) => s.date === apt.date);
+              if (oldMatch) {
+                match = oldMatch;
+              } else {
+                // Try new schema: match by day name + date range
+                const dayMap: Record<number, string> = { 0:'রবিবার', 1:'সোমবার', 2:'মঙ্গলবার', 3:'বুধবার', 4:'বৃহস্পতিবার', 5:'শুক্রবার', 6:'শনিবার' };
+                const aptDate = new Date(apt.date + 'T00:00:00');
+                const dayName = dayMap[aptDate.getDay()];
+                const dayMatch = scheduleData.find((s: any) => {
+                  if (!s.selected_days?.includes(dayName)) return false;
+                  const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+                  const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+                  return startOk && endOk;
+                });
+                if (dayMatch) match = dayMatch;
+              }
+
+              if (match) {
+                scheduleStart = match.start_time?.substring(0, 5) || null;
+                if (match.end_time) timeRange = `${(match.start_time || startTime).substring(0, 5)} - ${match.end_time.substring(0, 5)}`;
+              }
             }
           } catch (e) {
             console.error('Error fetching shift time:', e);
@@ -86,7 +109,8 @@ export default function PatientAppointments() {
             doctorId: apt.doctor_id,
             specialization: apt.doctors?.specialization,
             displayStatus: getStatusFromDate(apt.date, apt.status),
-            time_range: timeRange
+            time_range: timeRange,
+            scheduleStart
           };
         }));
 
@@ -285,7 +309,7 @@ const statusOrder: Record<string, number> = {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-slate-400" />
-                    {apt.time_range}
+                    {apt.serial_number ? calculateExpectedTime(apt.scheduleStart, apt.serial_number) : apt.time_range}
                   </span>
                   <span className={`flex items-center gap-1.5 ${apt.type === 'teleconsult' ? 'text-purple-600' : ''}`}>
                     <span className="text-slate-500">ধরন:</span>
@@ -351,8 +375,8 @@ const statusOrder: Record<string, number> = {
                   <p className="font-semibold">{formatDate(selectedApt.date)}</p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl">
-                  <p className="text-sm text-slate-500 mb-1">সময়</p>
-                  <p className="font-semibold">{selectedApt.time_range}</p>
+                  <p className="text-sm text-slate-500 mb-1">প্রত্যাশিত সময়</p>
+                  <p className="font-semibold">{selectedApt.serial_number ? calculateExpectedTime(selectedApt.scheduleStart, selectedApt.serial_number) : selectedApt.time_range}</p>
                 </div>
               </div>
               {(selectedApt.status === 'confirmed' || selectedApt.status === 'completed') ? (
@@ -411,10 +435,11 @@ const statusOrder: Record<string, number> = {
                <div className="flex justify-center">
                  <QRCode value={`${window.location.origin}/dashboard/patient/appointments?id=${selectedApt.id}`} size={200} />
                </div>
-               <div className="space-y-2">
-                 <p className="font-semibold">{selectedApt.doctor}</p>
-                 <p className="text-sm text-slate-500">{formatDate(selectedApt.date)} - {calculateExpectedTime(selectedApt.time_range.split(' - ')[0], selectedApt.serial_number)}</p>
-               </div>
+                <div className="space-y-2">
+                  <p className="font-semibold">{selectedApt.doctor}</p>
+                  <p className="text-sm text-slate-500">{formatDate(selectedApt.date)}</p>
+                   <p className="text-sm text-slate-500">প্রত্যাশিত সময়: <span className="font-mono font-semibold text-primary-600">{selectedApt.serial_number ? calculateExpectedTime(selectedApt.scheduleStart, selectedApt.serial_number) : selectedApt.time_range}</span></p>
+                </div>
                <Button
                  onClick={() => {
                    const printWindow = window.open('', '_blank');
@@ -431,7 +456,7 @@ const statusOrder: Record<string, number> = {
                            <h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2>
                            <p>ডাক্তার: ${selectedApt.doctor}</p>
                            <p>তারিখ: ${formatDate(selectedApt.date)}</p>
-                           <p>সময়: ${calculateExpectedTime(selectedApt.time_range.split(' - ')[0], selectedApt.serial_number)}</p>
+                            <p>সময়: ${selectedApt.serial_number ? calculateExpectedTime(selectedApt.scheduleStart, selectedApt.serial_number) : selectedApt.time_range}</p>
                            <div id="qrcode"></div>
                            <script type="text/babel">
                              const QrCode = window.QRCodeSVG.default || window.QRCodeSVG;

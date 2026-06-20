@@ -179,16 +179,53 @@ useEffect(() => {
     }
 
     if (apts) {
+      // Prefetch all active schedules for the doctor to resolve schedule start time
+      let scheduleData: any[] = [];
+      try {
+        const { data } = await supabase
+          .from('schedules')
+          .select('start_time, end_time, selected_days, start_date, end_date, date')
+          .eq('doctor_id', doctorData.id)
+          .eq('status', 'active');
+        if (data) scheduleData = data;
+      } catch (e) {
+        console.error('Error prefetching schedules for doctor:', e);
+      }
+
       const mapped = apts.map((apt: any) => {
         const timeRange = apt.time 
           ? formatTime(apt.time)
           : '';
+
+        let scheduleStart: string | null = null;
+        if (scheduleData.length > 0) {
+          let match: any = null;
+          const oldMatch = scheduleData.find((s: any) => s.date === apt.date);
+          if (oldMatch) {
+            match = oldMatch;
+          } else {
+            const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+            const aptDate = new Date(apt.date + 'T00:00:00');
+            const dayName = dayMap[aptDate.getDay()];
+            const dayMatch = scheduleData.find((s: any) => {
+              if (!s.selected_days?.includes(dayName)) return false;
+              const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+              const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+              return startOk && endOk;
+            });
+            if (dayMatch) match = dayMatch;
+          }
+          if (match && match.start_time) {
+            scheduleStart = match.start_time.substring(0, 5);
+          }
+        }
 
         return {
           ...apt,
           patientName: apt.patients?.name || 'রোগী',
           patientPhone: apt.patients?.phone || '',
           time_display: timeRange,
+          scheduleStart,
           displayStatus: getStatusFromDate(apt.date, apt.status),
         };
       });
@@ -225,7 +262,8 @@ const statusOrder: Record<string, number> = {
         if (a.serial_number && b.serial_number) return a.serial_number.localeCompare(b.serial_number);
         return (a.created_at || '').localeCompare(b.created_at || '');
       });
-      const firstTime = (sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
+      const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
+      const firstTime = (baseScheduleStart || sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
       const baseHours = firstTime[0] || 9;
       const baseMinutes = firstTime[1] || 0;
       sorted.forEach((apt, idx) => {
@@ -308,13 +346,46 @@ const statusOrder: Record<string, number> = {
           });
         } catch (e) {}
 
+        let scheduleStart = null;
+        try {
+          const { data: scheduleData } = await supabase
+            .from('schedules')
+            .select('start_time, selected_days, start_date, end_date, date')
+            .eq('doctor_id', apt.doctor_id)
+            .eq('status', 'active');
+
+          if (scheduleData && scheduleData.length > 0) {
+            let match: any = null;
+            const oldMatch = scheduleData.find((s: any) => s.date === apt.date);
+            if (oldMatch) {
+              match = oldMatch;
+            } else {
+              const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+              const aptDate = new Date(apt.date + 'T00:00:00');
+              const dayName = dayMap[aptDate.getDay()];
+              const dayMatch = scheduleData.find((s: any) => {
+                if (!s.selected_days?.includes(dayName)) return false;
+                const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+                const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+                return startOk && endOk;
+              });
+              if (dayMatch) match = dayMatch;
+            }
+            if (match && match.start_time) {
+              scheduleStart = match.start_time.substring(0, 5);
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching schedule start in updateStatus:', e);
+        }
+
         try {
           const patientPhone = apt.patients?.phone;
           if (patientPhone) {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
               apt.date,
-              apt.time || '',
+              scheduleStart || apt.time || '',
               updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);
@@ -420,7 +491,7 @@ const statusOrder: Record<string, number> = {
       if (newStatus === 'confirmed') {
         try { await sendNotification('appointment_confirmed_patient', { patientId: apt.patient_id }, { patientName: apt.patients?.name, doctorName: apt.doctors?.name, date: apt.date }); } catch(e) {}
         try { await sendNotification('appointment_confirmed_doctor', { doctorId: apt.doctor_id }, { patientName: apt.patients?.name, date: apt.date }); } catch(e) {}
-        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', apt.date, apt.time||'', apt.serial_number||'')); } } catch(e) {}
+        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', apt.date, apt.scheduleStart||apt.time||'', apt.serial_number||'')); } } catch(e) {}
       }
       toast.success(newStatus === 'confirmed' ? 'নিশ্চিত হয়েছে' : 'অপেক্ষায় সেট করা হয়েছে');
       loadAppointments();
@@ -468,8 +539,46 @@ const statusOrder: Record<string, number> = {
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
       const { data: createdApt } = await supabase.from('appointments').select('*, patients(*), doctors(*)').eq('patient_id', newPatient.id).order('created_at', { ascending: false }).limit(1).single();
+
+      // Fetch doctor's schedule start time on the appointment date
+      let scheduleStart = null;
+      try {
+        const { data: scheduleData } = await supabase
+          .from('schedules')
+          .select('start_time, selected_days, start_date, end_date, date')
+          .eq('doctor_id', doctorData.id)
+          .eq('status', 'active');
+
+        if (scheduleData && scheduleData.length > 0) {
+          let match: any = null;
+          const oldMatch = scheduleData.find((s: any) => s.date === walkinPatient.date);
+          if (oldMatch) {
+            match = oldMatch;
+          } else {
+            const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+            const aptDate = new Date(walkinPatient.date + 'T00:00:00');
+            const dayName = dayMap[aptDate.getDay()];
+            const dayMatch = scheduleData.find((s: any) => {
+              if (!s.selected_days?.includes(dayName)) return false;
+              const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+              const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+              return startOk && endOk;
+            });
+            if (dayMatch) match = dayMatch;
+          }
+          if (match && match.start_time) {
+            scheduleStart = match.start_time.substring(0, 5);
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching schedule start for walkin:', e);
+      }
+
       toast.success('অ্যাপয়েন্টমেন্ট যোগ হয়েছে');
-      setQRAppointment(createdApt);
+      setQRAppointment({
+        ...createdApt,
+        scheduleStart: scheduleStart
+      });
       setShowQRModal(true);
       setShowWalkinModal(false);
       setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', weight: 0, type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '' });
@@ -744,8 +853,8 @@ const statusOrder: Record<string, number> = {
         {qrAppointment && (
           <div className="space-y-4 text-center">
             <div className="flex justify-center" id="qr-code-print-area"><QRCode value={`${window.location.origin}/dashboard/patient/appointments?id=${qrAppointment.id}`} size={200} /></div>
-            <div className="space-y-2"><p className="font-semibold">{qrAppointment.patients?.name}</p><p className="text-sm text-slate-500">{formatDate(qrAppointment.date)}</p><p className="text-sm font-mono font-semibold text-primary-600">{calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number)}</p></div>
-            <Button onClick={() => { const pw = window.open('','_blank'); if(pw) { const qs=document.querySelector('#qr-code-print-area svg'); const sh=qs?qs.outerHTML:''; const exp=calculateExpectedTime(qrAppointment.time, qrAppointment.serial_number); pw.document.write(`<html><head><title>QR কোড</title></head><body style="text-align:center;padding:20px;font-family:sans-serif;"><h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2><p>রোগী: ${qrAppointment.patients?.name}</p><p>তারিখ: ${formatDate(qrAppointment.date)}</p><p>সময়: ${exp}</p>${sh}</body></html>`); pw.document.close(); pw.focus(); pw.print(); }}} className="w-full">প্রিন্ট করুন</Button>
+            <div className="space-y-2"><p className="font-semibold">{qrAppointment.patients?.name}</p><p className="text-sm text-slate-500">{formatDate(qrAppointment.date)}</p><p className="text-sm font-mono font-semibold text-primary-600">{calculateExpectedTime(qrAppointment.scheduleStart || qrAppointment.time, qrAppointment.serial_number)}</p></div>
+            <Button onClick={() => { const pw = window.open('','_blank'); if(pw) { const qs=document.querySelector('#qr-code-print-area svg'); const sh=qs?qs.outerHTML:''; const exp=calculateExpectedTime(qrAppointment.scheduleStart || qrAppointment.time, qrAppointment.serial_number); pw.document.write(`<html><head><title>QR কোড</title></head><body style="text-align:center;padding:20px;font-family:sans-serif;"><h2>ক্লিনিক কানেক্ট - অ্যাপয়েন্টমেন্ট</h2><p>রোগী: ${qrAppointment.patients?.name}</p><p>তারিখ: ${formatDate(qrAppointment.date)}</p><p>সময়: ${exp}</p>${sh}</body></html>`); pw.document.close(); pw.focus(); pw.print(); }}} className="w-full">প্রিন্ট করুন</Button>
           </div>
         )}
       </Modal>
