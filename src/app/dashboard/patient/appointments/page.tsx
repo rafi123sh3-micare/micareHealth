@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Calendar, Clock, Video, X, ChevronRight, FileText, Search, Printer } from 'lucide-react';
+import { Calendar, Clock, Video, X, ChevronRight, FileText, Search, Printer, Receipt } from 'lucide-react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabase, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
+import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import DatePicker from '@/components/ui/DatePicker';
@@ -244,6 +245,59 @@ const statusOrder: Record<string, number> = {
     pw.document.close();
   };
 
+  const handlePrintInvoice = async (apt: any) => {
+    let bcode = patientInfo?.bcode || '';
+    if (!bcode && apt.patient_id) {
+      try {
+        const r = await fetch(`/api/gen-bcode?patient_id=${apt.patient_id}`);
+        const d = await r.json();
+        if (d.code) bcode = d.code;
+      } catch {}
+    }
+
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB');
+    const billNo = `INV-${apt.serial_number || apt.id?.substring(0, 8) || '0000'}-${today.getTime().toString().slice(-4)}`;
+    const feeAmt = getFeeAmount(apt.fee_type);
+    const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
+    const advancePaid = apt.advance || 0;
+    const dueAmt = feeAmt - advancePaid;
+
+    generateCashMemoPrint({
+      billNo,
+      date: dateStr,
+      appNo: apt.serial_number || '-',
+      hn: patientInfo?.id?.substring(0, 8) || '-',
+      barcode: bcode,
+      patientName: patientInfo?.name || '',
+      patientAge: patientInfo?.age ?? '',
+      patientGender: patientInfo?.gender || patientInfo?.sex || '',
+      patientMobile: patientInfo?.phone || '',
+      patientAddress: '',
+      conType: apt.type === 'teleconsult' ? 'Teleconsultation' : 'In-person Visit',
+      department: apt.specialization || 'General',
+      consultant: apt.doctor || '',
+      services: [
+        { name: `${feeLabel} Fee (${apt.doctor || 'Doctor'})`, amount: feeAmt },
+      ],
+      subTotal: feeAmt,
+      netPayable: feeAmt,
+      advance: advancePaid,
+      due: dueAmt,
+      inWords: numberToWords(dueAmt),
+      isPaid: dueAmt <= 0,
+      paymentLog: [
+        {
+          paymentType: feeLabel,
+          collectedBy: 'Admin',
+          date: dateStr,
+          mode: 'Cash',
+          amount: feeAmt,
+        },
+      ],
+    });
+  };
+
   if (loading) {
     return (
       <DashboardLayout role="patient">
@@ -401,14 +455,26 @@ const statusOrder: Record<string, number> = {
                 )}
 
                 <div className="flex items-center justify-between mt-3">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handlePrintSlipFromTable(apt); }}
-                    className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-primary-600 transition-colors"
-                    title="স্লিপ প্রিন্ট"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span className="text-xs">প্রিন্ট</span>
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handlePrintSlipFromTable(apt); }}
+                      className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-primary-600 transition-colors"
+                      title="স্লিপ প্রিন্ট"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span className="text-xs">প্রিন্ট</span>
+                    </button>
+                    {(apt.status === 'confirmed' || apt.status === 'completed') && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handlePrintInvoice(apt); }}
+                        className="flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 transition-colors"
+                        title="ইনভয়েস প্রিন্ট"
+                      >
+                        <Receipt className="w-4 h-4" />
+                        <span className="text-xs">ইনভয়েস</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-sm font-medium">বিস্তারিত</span>
                     <ChevronRight className="w-4 h-4" />
@@ -486,14 +552,22 @@ const statusOrder: Record<string, number> = {
                  <StatusPill status={selectedApt.displayStatus as any} />
                </div>
 
-               <div className="pt-4 border-t">
-                 <Button
-                   onClick={() => setShowQRModal(true)}
-                   className="w-full"
-                 >
-                   <Printer className="w-4 h-4 mr-2" /> QR কোড দেখুন ও প্রিন্ট করুন
-                 </Button>
-               </div>
+               <div className="pt-4 border-t space-y-3">
+                  <Button
+                    onClick={() => setShowQRModal(true)}
+                    className="w-full"
+                  >
+                    <Printer className="w-4 h-4 mr-2" /> QR কোড দেখুন ও প্রিন্ট করুন
+                  </Button>
+                  {(selectedApt.status === 'confirmed' || selectedApt.status === 'completed') && (
+                    <Button
+                      onClick={() => { setSelectedApt(selectedApt); handlePrintInvoice(selectedApt); }}
+                      className="w-full !bg-emerald-500 hover:!bg-emerald-600"
+                    >
+                      <Receipt className="w-4 h-4 mr-2" /> ইনভয়েস প্রিন্ট করুন
+                    </Button>
+                  )}
+                </div>
              </div>
            )}
          </Modal>

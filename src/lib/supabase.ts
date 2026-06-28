@@ -16,43 +16,66 @@ export const supabase1 = supabaseUrl1 && supabaseAnonKey1
   ? createClient(supabaseUrl1, supabaseAnonKey1)
   : supabase;
 
-export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult'): Promise<string> {
-  console.log('generateSerialNumber called:', { doctorId, date, type });
-  
-  const { data: doctor, error: docError } = await supabase
-    .from('doctors')
-    .select('id, name, doctor_code')
-    .eq('id', doctorId)
-    .single();
+const FEE_TYPE_PREFIX: Record<string, string> = {
+  new: 'N',
+  follow_up: 'F',
+  report: 'R',
+};
 
-  console.log('Doctor data:', doctor, 'error:', docError);
-  
-  if (docError) {
-    console.error('Doctor fetch error:', docError);
-  }
+export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string): Promise<string> {
+  const [doctorResult, countResult] = await Promise.all([
+    supabase.from('doctors').select('doctor_code').eq('id', doctorId).single(),
+    supabase.from('appointments').select('id').eq('doctor_id', doctorId).eq('date', date).in('status', ['confirmed', 'completed'])
+  ]);
 
-  const doctorCode = doctor?.doctor_code || 'DR01';
+  const doctorCode = doctorResult.data?.doctor_code || 'DR01';
   const typeSuffix = type === 'teleconsult' ? 'T' : 'A';
-  console.log('Using doctor code:', doctorCode, 'for doctor:', doctor?.name);
-  
-  const { data: existingApts, error: countError } = await supabase
-    .from('appointments')
-    .select('id, serial_number')
-    .eq('doctor_id', doctorId)
-    .eq('date', date)
-    .in('status', ['confirmed', 'completed']);
+  const feePrefix = FEE_TYPE_PREFIX[feeType || ''] || '';
+  const count = countResult.data?.length || 0;
 
-  console.log('Existing appointments:', existingApts, 'count:', existingApts?.length, 'error:', countError);
-  
-  if (countError) {
-    console.error('Error calculating serial number:', countError.message);
-  }
-  
-  const count = existingApts?.length || 0;
-  const nextNumber = count + 1;
-  console.log('Next serial number calculated:', nextNumber);
-  
-  return `${doctorCode}-${String(nextNumber).padStart(3, '0')}${typeSuffix}`;
+  return `${doctorCode}-${String(count + 1).padStart(3, '0')}${typeSuffix}${feePrefix}`;
+}
+
+export const FEE_TYPES = [
+  { value: 'new', label: 'New Patient', amount: 1000 },
+  { value: 'follow_up', label: 'Follow Up', amount: 700 },
+  { value: 'report', label: 'Report Showing', amount: 0 },
+] as const;
+
+export function getFeeAmount(feeType?: string): number {
+  const ft = FEE_TYPES.find(f => f.value === feeType);
+  return ft?.amount ?? 500;
+}
+
+export function getFeeTypePrefix(feeType?: string): string {
+  return FEE_TYPE_PREFIX[feeType || ''] || '';
+}
+
+export function numberToWords(n: number): string {
+  if (n === 0) return 'Zero Taka Only';
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const convertUpto999 = (num: number): string => {
+    if (num < 20) return ones[num];
+    if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
+    if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + convertUpto999(num % 100) : '');
+    return '';
+  };
+  const convert = (num: number): string => {
+    if (num < 1000) return convertUpto999(num);
+    if (num < 100000) {
+      const th = Math.floor(num / 1000);
+      const rem = num % 1000;
+      return convertUpto999(th) + ' Thousand' + (rem ? ' ' + convertUpto999(rem) : '');
+    }
+    return convertUpto999(Math.floor(num / 100000)) + ' Lakh' + (num % 100000 ? ' ' + convert(num % 100000) : '');
+  };
+  let result = '';
+  const taka = Math.floor(n);
+  const paisa = Math.round((n - taka) * 100);
+  if (taka > 0) result += convert(taka) + ' Taka';
+  if (paisa > 0) result += ' & ' + convert(paisa) + ' Paisa';
+  return result + ' Only';
 }
 
 export async function getSession() {

@@ -47,8 +47,8 @@ export function BarcodeScannerInput({
         return;
       }
 
-      toast.success(`${patient.name} পাওয়া গেছে`);
       onPatientFound(patient);
+      window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${patient.id}`, '_blank');
     } catch {
       toast.error('সার্ভার ত্রুটি');
     } finally {

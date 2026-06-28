@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Calendar, Clock, Video, ArrowLeft, ArrowRight, Check, Stethoscope, DollarSign } from 'lucide-react';
+import { Calendar, Clock, Video, ArrowLeft, ArrowRight, Check, Stethoscope, DollarSign, User } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase, getDoctors } from '@/lib/supabase';
+import { supabase, getDoctors, FEE_TYPES } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
@@ -29,7 +29,7 @@ export default function PatientBook() {
   const [availableSlots, setAvailableSlots] = useState<any[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<any>(null);
   const [consultType, setConsultType] = useState<'in-person' | 'teleconsult'>('in-person');
-  const [reason, setReason] = useState('');
+  const [feeType, setFeeType] = useState('new');
 
   useEffect(() => {
     loadDoctors();
@@ -193,7 +193,7 @@ export default function PatientBook() {
         time: selectedSlot.start,
         status: 'pending',
         type: consultType,
-        reason: reason,
+        fee_type: feeType,
         teleconsult_link: consultType === 'teleconsult' ? selectedDoctor?.zoom_link || null : null,
       };
 
@@ -213,33 +213,17 @@ export default function PatientBook() {
       if (appointment) {
         requestPushPermission();
 
-        const { data: adminUsers } = await supabase
-          .from('users')
-          .select('id')
-          .eq('role', 'admin');
-        const adminIds = adminUsers?.map(u => u.id) || [];
-
-        try {
-          await sendNotification('appointment_booked_admin', {
-            adminIds,
-            doctorId: selectedDoctor.id,
-          }, {
-            patientName: patientData.name,
-            doctorName: selectedDoctor.name,
-            date: selectedDate,
-            time: selectedSlot.start,
-          });
-        } catch (e) {}
-
-        try {
-          await sendNotification('appointment_booked_doctor', {
-            doctorId: selectedDoctor.id,
-          }, {
-            patientName: patientData.name,
-            date: selectedDate,
-            time: selectedSlot.start,
-          });
-        } catch (e) {}
+        Promise.allSettled([
+          supabase.from('users').select('id').eq('role', 'admin').then(({ data }) => {
+            const adminIds = data?.map(u => u.id) || [];
+            return sendNotification('appointment_booked_admin', { adminIds, doctorId: selectedDoctor.id }, {
+              patientName: patientData.name, doctorName: selectedDoctor.name, date: selectedDate, time: selectedSlot.start,
+            });
+          }),
+          sendNotification('appointment_booked_doctor', { doctorId: selectedDoctor.id }, {
+            patientName: patientData.name, date: selectedDate, time: selectedSlot.start,
+          }),
+        ]).catch(() => {});
 
         toast.success('আপনার অনুরোধ প্রক্রিয়াধীন আছে');
         router.push('/dashboard/patient/appointments');
@@ -425,6 +409,31 @@ export default function PatientBook() {
               </div>
             </Card>
 
+            <Card>
+              <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                <User className="w-5 h-5 text-primary-500" />
+                রোগীর ধরন
+              </h2>
+              <div className="grid grid-cols-3 gap-3">
+                {FEE_TYPES.map((ft) => (
+                  <button
+                    key={ft.value}
+                    onClick={() => setFeeType(ft.value)}
+                    className={`
+                      p-4 rounded-xl border-2 transition-all text-center
+                      ${feeType === ft.value
+                        ? 'border-emerald-500 bg-emerald-50'
+                        : 'border-slate-200 hover:border-slate-300'
+                      }
+                    `}
+                  >
+                    <div className="font-semibold text-slate-900">{ft.label}</div>
+                    <div className="text-sm text-emerald-600 font-medium mt-1">৳{ft.amount}</div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+
             <Button
               onClick={() => setStep(3)}
               className="w-full"
@@ -521,19 +530,9 @@ export default function PatientBook() {
               </Card>
             )}
 
-            <Card>
-              <label className="font-semibold text-slate-900 mb-3 block">আপনার সমস্যা বলুন</label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className="input h-24 resize-none"
-                placeholder="সমস্যা লিখুন..."
-              />
-            </Card>
-
             <Button
               onClick={() => setStep(4)}
-              disabled={!selectedDate || !selectedSlot || !reason}
+              disabled={!selectedDate || !selectedSlot}
               className="w-full"
             >
               পরবর্তী ধাপ
@@ -573,12 +572,12 @@ export default function PatientBook() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between py-3 border-b border-slate-100">
-                  <span className="text-slate-500">সমস্যা</span>
-                  <span className="font-semibold text-slate-900">{reason}</span>
+                  <span className="text-slate-500">রোগীর ধরন</span>
+                  <span className="font-semibold text-slate-900">{FEE_TYPES.find(f => f.value === feeType)?.label}</span>
                 </div>
                 <div className="flex items-center justify-between py-4 bg-primary-50 rounded-xl px-4 -mx-4">
                   <span className="font-semibold text-slate-900">মোট ফি</span>
-                  <span className="text-2xl font-bold text-primary-600">৳{selectedDoctor.fee}</span>
+                  <span className="text-2xl font-bold text-primary-600">৳{FEE_TYPES.find(f => f.value === feeType)?.amount || selectedDoctor.fee}</span>
                 </div>
               </div>
             </Card>

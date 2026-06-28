@@ -4,15 +4,16 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Zap, Printer, Scan } from 'lucide-react';
+import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Zap, Printer, Scan, Receipt } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { supabase, supabase1, generateSerialNumber } from '@/lib/supabase';
+import { supabase, supabase1, generateSerialNumber, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
+import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import DatePicker from '@/components/ui/DatePicker';
 import toast from 'react-hot-toast';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
@@ -127,6 +128,8 @@ export default function DoctorAppointments() {
     reason: '',
     compliant: '',
     bcode: '',
+    fee_type: 'new' as string,
+    advance: 0 as number,
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
   const [specialTimePower, setSpecialTimePower] = useState(false);
@@ -335,7 +338,8 @@ const statusOrder: Record<string, number> = {
       const serialNumber = await generateSerialNumber(
         apt.doctor_id,
         apt.date,
-        apt.type === 'teleconsult' ? 'teleconsult' : 'appointment'
+        apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
+        apt.fee_type
       );
       updateData.serial_number = serialNumber;
     }
@@ -496,7 +500,8 @@ const statusOrder: Record<string, number> = {
       const serialNumber = await generateSerialNumber(
         apt.doctor_id,
         apt.date,
-        apt.type === 'teleconsult' ? 'teleconsult' : 'appointment'
+        apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
+        apt.fee_type
       );
       updateData.serial_number = serialNumber;
     }
@@ -543,11 +548,11 @@ const statusOrder: Record<string, number> = {
       const { supabase } = await import('@/lib/supabase');
       const { data: patient } = await supabase
         .from('patients')
-        .select('id, name, phone, age, bcode')
+        .select('id')
         .eq('bcode', code)
         .maybeSingle();
       if (patient) {
-        handleBarcodePatient(patient);
+        window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${patient.id}`, '_blank');
       } else {
         toast.error('কোনো রোগী খুঁজে পাওয়া যায়নি');
       }
@@ -568,72 +573,91 @@ const statusOrder: Record<string, number> = {
     if (!walkinPatient.name) { toast.error('রোগীর নাম লিখুন'); return; }
     setCreatingWalkin(true);
     try {
-      // Always create a new patient record for each walk-in (even if name/phone match)
-      const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const { data: newPatient, error: patientError } = await supabase.from('patients').insert({
-        name: walkinPatient.name, phone: walkinPatient.phone || '', email: `walkin_${uniqueSuffix}@clinicconnect.local`,
-        password: 'walkin_temp', age: walkinPatient.age, sex: walkinPatient.sex || 'male',
-        weight: walkinPatient.weight, compliant: walkinPatient.compliant || 'false',
-      }).select('id').single();
-      if (patientError || !newPatient) { toast.error('রোগী তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
-      const getCurrentTime = () => { const n=new Date(); return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; };
+      const getCurrentTime = () => { const n = new Date(); return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; };
       const appointmentTime = specialTimePower ? getCurrentTime() : (walkinPatient.time ? walkinPatient.time.split(' - ')[0] : '09:00');
       const type = walkinPatient.type === 'teleconsult' ? 'teleconsult' : 'appointment';
-      const serialNumber = await generateSerialNumber(doctorData.id, walkinPatient.date, type);
+      const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      const [patientResult, serialNumber] = await Promise.all([
+        supabase.from('patients').insert({
+          name: walkinPatient.name, phone: walkinPatient.phone || '', email: `walkin_${uniqueSuffix}@clinicconnect.local`,
+          password: 'walkin_temp', age: walkinPatient.age, sex: walkinPatient.sex || 'male',
+          weight: walkinPatient.weight, compliant: walkinPatient.compliant || 'false',
+        }).select('id').single(),
+        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type)
+      ]);
+
+      const newPatient = patientResult.data;
+      if (patientResult.error || !newPatient) { toast.error('রোগী তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
+
       const { error: aptError } = await supabase.from('appointments').insert({
         patient_id: newPatient.id, doctor_id: doctorData.id, date: walkinPatient.date,
         time: appointmentTime, status: 'confirmed', type: walkinPatient.type,
         reason: walkinPatient.reason || 'ওয়াক-ইন', serial_number: serialNumber,
-        patient_mobile: walkinPatient.phone || '',
+        patient_mobile: walkinPatient.phone || '', fee_type: walkinPatient.fee_type,
+        advance: walkinPatient.advance,
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
-      const { data: createdApt } = await supabase.from('appointments').select('*, patients(*), doctors(*)').eq('patient_id', newPatient.id).order('created_at', { ascending: false }).limit(1).single();
 
-      // Fetch doctor's schedule start time on the appointment date
-      let scheduleStart = null;
-      try {
-        const { data: scheduleData } = await supabase
-          .from('schedules')
+      const [scheduleResult] = await Promise.all([
+        supabase.from('schedules')
           .select('start_time, selected_days, start_date, end_date, date')
           .eq('doctor_id', doctorData.id)
-          .eq('status', 'active');
+          .eq('status', 'active')
+      ]);
 
-        if (scheduleData && scheduleData.length > 0) {
-          let match: any = null;
-          const oldMatch = scheduleData.find((s: any) => s.date === walkinPatient.date);
-          if (oldMatch) {
-            match = oldMatch;
-          } else {
-            const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
-            const aptDate = new Date(walkinPatient.date + 'T00:00:00');
-            const dayName = dayMap[aptDate.getDay()];
-            const dayMatch = scheduleData.find((s: any) => {
-              if (!s.selected_days?.includes(dayName)) return false;
-              const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
-              const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
-              return startOk && endOk;
-            });
-            if (dayMatch) match = dayMatch;
-          }
-          if (match && match.start_time) {
-            scheduleStart = match.start_time.substring(0, 5);
-          }
+      let scheduleStart = null;
+      const scheduleData = scheduleResult.data;
+      if (scheduleData && scheduleData.length > 0) {
+        let match: any = null;
+        const oldMatch = scheduleData.find((s: any) => s.date === walkinPatient.date);
+        if (oldMatch) {
+          match = oldMatch;
+        } else {
+          const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+          const aptDate = new Date(walkinPatient.date + 'T00:00:00');
+          const dayName = dayMap[aptDate.getDay()];
+          const dayMatch = scheduleData.find((s: any) => {
+            if (!s.selected_days?.includes(dayName)) return false;
+            const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+            const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+            return startOk && endOk;
+          });
+          if (dayMatch) match = dayMatch;
         }
-      } catch (e) {
-        console.error('Error fetching schedule start for walkin:', e);
+        if (match && match.start_time) {
+          scheduleStart = match.start_time.substring(0, 5);
+        }
       }
 
       toast.success('অ্যাপয়েন্টমেন্ট যোগ হয়েছে');
       setQRAppointment({
-        ...createdApt,
-        scheduleStart: scheduleStart
+        id: '',
+        patient_id: newPatient.id,
+        patients: {
+          name: walkinPatient.name,
+          phone: walkinPatient.phone,
+          id: newPatient.id,
+          sex: walkinPatient.sex || '',
+          age: walkinPatient.age || '',
+          bcode: walkinPatient.bcode || '',
+        },
+        doctors: {
+          name: doctorData.name || '',
+          degree: doctorData.degree || '',
+          specialty: doctorData.specialty || '',
+        },
+        serial_number: serialNumber,
+        date: walkinPatient.date,
+        time: appointmentTime,
+        scheduleStart,
       });
       setShowQRModal(true);
       setShowWalkinModal(false);
-      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', weight: 0, type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '' });
+      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', weight: 0, type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0 });
       setSpecialTimePower(false);
       loadAppointments();
-    } catch(err) { toast.error('কিছু সমস্যা হয়েছে'); }
+    } catch (err) { toast.error('কিছু সমস্যা হয়েছে'); }
     finally { setCreatingWalkin(false); }
   };
 
@@ -757,6 +781,59 @@ const statusOrder: Record<string, number> = {
       .eq('id', apt.id)
       .single();
     if (data) handlePrintSlip(data);
+  };
+
+  const handlePrintInvoice = async (apt: any) => {
+    let bcode = apt.patients?.bcode || '';
+    if (!bcode && apt.patient_id) {
+      try {
+        const r = await fetch(`/api/gen-bcode?patient_id=${apt.patient_id}`);
+        const d = await r.json();
+        if (d.code) bcode = d.code;
+      } catch {}
+    }
+
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB');
+    const billNo = `INV-${apt.serial_number || apt.id?.substring(0, 8) || '0000'}-${today.getTime().toString().slice(-4)}`;
+    const feeAmt = getFeeAmount(apt.fee_type);
+    const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
+    const advancePaid = apt.advance || 0;
+    const dueAmt = feeAmt - advancePaid;
+
+    generateCashMemoPrint({
+      billNo,
+      date: dateStr,
+      appNo: apt.serial_number || '-',
+      hn: apt.patient_id?.substring(0, 8) || '-',
+      barcode: bcode,
+      patientName: apt.patients?.name || apt.patientName || '',
+      patientAge: apt.patients?.age ?? '',
+      patientGender: apt.patients?.sex || '',
+      patientMobile: apt.patients?.phone || apt.patient_mobile || '',
+      patientAddress: '',
+      conType: apt.type === 'teleconsult' ? 'Teleconsultation' : 'In-person Visit',
+      department: apt.specialization || 'General',
+      consultant: apt.doctors?.name || apt.doctorName || '',
+      services: [
+        { name: `${feeLabel} Fee (${apt.doctors?.name || apt.doctorName || 'Doctor'})`, amount: feeAmt },
+      ],
+      subTotal: feeAmt,
+      netPayable: feeAmt,
+      advance: advancePaid,
+      due: dueAmt,
+      inWords: numberToWords(dueAmt),
+      isPaid: dueAmt <= 0,
+      paymentLog: [
+        {
+          paymentType: feeLabel,
+          collectedBy: 'Doctor',
+          date: dateStr,
+          mode: 'Cash',
+          amount: feeAmt,
+        },
+      ],
+    });
   };
 
   if (loading) {
@@ -907,6 +984,7 @@ const statusOrder: Record<string, number> = {
                               <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handleHistory(apt)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="ইতিহাস"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handlePrintSlipFromTable(apt)} className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors" title="স্লিপ প্রিন্ট"><Printer className="w-4 h-4" /></button>
+                              <button onClick={() => handlePrintInvoice(apt)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস প্রিন্ট"><Receipt className="w-4 h-4" /></button>
                             </>
                           )}
                           {apt.status === 'completed' && (
@@ -914,6 +992,7 @@ const statusOrder: Record<string, number> = {
                               <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handleHistory(apt)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="ইতিহাস"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handlePrintSlipFromTable(apt)} className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors" title="স্লিপ প্রিন্ট"><Printer className="w-4 h-4" /></button>
+                              <button onClick={() => handlePrintInvoice(apt)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস প্রিন্ট"><Receipt className="w-4 h-4" /></button>
                             </div>
                           )}
                         </div>
@@ -942,6 +1021,42 @@ const statusOrder: Record<string, number> = {
               <button type="button" onClick={() => setWalkinPatient({...walkinPatient, type: 'teleconsult'})} className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all ${walkinPatient.type === 'teleconsult' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-slate-200 hover:border-slate-300'}`}>ভিডিও কল</button>
             </div>
           </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
+            <div className="grid grid-cols-3 gap-2">
+              {FEE_TYPES.map((ft) => (
+                <button key={ft.value} type="button" onClick={() => setWalkinPatient({...walkinPatient, fee_type: ft.value})}
+                  className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${walkinPatient.fee_type === ft.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <div className="font-semibold">{ft.label}</div>
+                  <div className="text-xs mt-0.5 opacity-75">৳{ft.amount}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
+              <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(walkinPatient.fee_type)}</div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">অগ্রিম টাকা (Advance)</label>
+              <input
+                type="number"
+                min={0}
+                max={getFeeAmount(walkinPatient.fee_type)}
+                value={walkinPatient.advance}
+                onChange={(e) => {
+                  const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(walkinPatient.fee_type));
+                  setWalkinPatient({ ...walkinPatient, advance: val });
+                }}
+                className="input w-full text-center font-semibold"
+              />
+            </div>
+            <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
+              <span className="text-slate-500">বাকি (Due):</span>
+              <span className="font-bold text-primary-600">৳{getFeeAmount(walkinPatient.fee_type) - walkinPatient.advance}</span>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-sm font-medium text-slate-600 mb-2 block">তারিখ</label><input type="date" value={walkinPatient.date} onChange={(e) => setWalkinPatient({...walkinPatient, date: e.target.value, time: ''})} className="input w-full" /></div>
             <div>
@@ -953,7 +1068,6 @@ const statusOrder: Record<string, number> = {
               <input type="time" value={walkinPatient.time} onChange={(e) => setWalkinPatient({...walkinPatient, time: e.target.value})} className="input w-full" disabled={specialTimePower} />
             </div>
           </div>
-          <div><label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর সমস্যা লিখুন</label><textarea value={walkinPatient.reason} onChange={(e) => setWalkinPatient({...walkinPatient, reason: e.target.value})} className="input w-full h-24 resize-none" placeholder="রোগীর সমস্যা লিখুন" /></div>
           <Button onClick={handleAddWalkin} className="w-full" disabled={creatingWalkin}>{creatingWalkin ? 'যোগ হচ্ছে...' : 'অ্যাপয়েন্টমেন্ট যোগ করুন'}</Button>
         </div>
       </Modal>

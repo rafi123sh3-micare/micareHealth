@@ -39,10 +39,6 @@ export default function AdminDashboard() {
     toast.success(`${patient.name} পাওয়া গেছে`);
   }, []);
 
-  const handleBarcodeClear = useCallback(() => {
-    setScannedPatient(null);
-  }, []);
-
   useEffect(() => {
     loadDashboardData();
   }, []);
@@ -263,7 +259,6 @@ export default function AdminDashboard() {
             <div className="flex-1 w-full sm:max-w-sm">
               <BarcodeScannerInput
                 onPatientFound={handleBarcodePatient}
-                onClear={handleBarcodeClear}
                 placeholder="বারকোড স্ক্যান করুন..."
                 autoFocus={false}
               />
