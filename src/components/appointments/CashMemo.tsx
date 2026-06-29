@@ -37,18 +37,18 @@ export function generateCashMemoPrint(data: CashMemoData) {
   const fmtAmt = (n: number) => n.toFixed(2);
 
   const paidBadge = data.isPaid
-    ? `<div style="position:absolute;top:50%;left:20px;transform:translateY(-50%);font-size:72px;font-weight:900;color:rgba(22,163,74,0.12);writing-mode:vertical-lr;letter-spacing:12px;border:6px solid rgba(22,163,74,0.20);padding:16px 8px;border-radius:12px;">PAID</div>`
+    ? `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(22,163,74,0.12);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(22,163,74,0.20);padding:6px 4px;border-radius:4px;">PAID</div>`
     : '';
 
   const logRows = data.paymentLog
     .map(
       (l) => `
     <tr>
-      <td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;font-size:13px;">${l.paymentType}</td>
-      <td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;font-size:13px;">${l.collectedBy}</td>
-      <td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;font-size:13px;">${l.date}</td>
-      <td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center;font-size:13px;">${l.mode}</td>
-      <td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right;font-size:13px;">${fmtAmt(l.amount)}</td>
+      <td style="padding:2px 6px;border:1px solid #e2e8f0;text-align:center;font-size:8px;">${l.paymentType}</td>
+      <td style="padding:2px 6px;border:1px solid #e2e8f0;text-align:center;font-size:8px;">${l.collectedBy}</td>
+      <td style="padding:2px 6px;border:1px solid #e2e8f0;text-align:center;font-size:8px;">${l.date}</td>
+      <td style="padding:2px 6px;border:1px solid #e2e8f0;text-align:center;font-size:8px;">${l.mode}</td>
+      <td style="padding:2px 6px;border:1px solid #e2e8f0;text-align:right;font-size:8px;">${fmtAmt(l.amount)}</td>
     </tr>`
     )
     .join('');
@@ -61,30 +61,29 @@ export function generateCashMemoPrint(data: CashMemoData) {
   <title>Cash Memo - Micare Health</title>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"><\/script>
   <style>
-    @page { margin: 15mm 12mm; size: A4; }
+    @page { margin: 5mm 6mm; size: A5; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
       color: #1e293b;
-      line-height: 1.5;
-      position: relative;
+      line-height: 1.3;
+      font-size: 9px;
     }
     .invoice-wrap {
-      max-width: 210mm;
+      max-width: 136mm;
       margin: 0 auto;
-      padding: 0;
     }
     .header-section {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
-      border-bottom: 2px solid #e2e8f0;
+      margin-bottom: 5px;
+      padding-bottom: 4px;
+      border-bottom: 1.5px solid #e2e8f0;
     }
     .logo-area {
-      width: 80px;
-      height: 80px;
+      width: 36px;
+      height: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -95,103 +94,91 @@ export function generateCashMemoPrint(data: CashMemoData) {
       text-align: center;
     }
     .brand-name {
-      font-size: 26px;
+      font-size: 14px;
       font-weight: 800;
-      letter-spacing: 1px;
       color: #0f172a;
       text-transform: uppercase;
     }
     .brand-details {
-      font-size: 12px;
+      font-size: 7px;
       color: #64748b;
-      margin-top: 4px;
-      line-height: 1.6;
-    }
-    .cash-memo-badge {
-      display: inline-block;
-      padding: 6px 32px;
-      border-radius: 50px;
-      border: 2px solid #1e293b;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: #1e293b;
-      margin-bottom: 16px;
+      line-height: 1.3;
     }
     .cash-memo-wrapper {
       text-align: center;
-      margin: 10px 0 18px;
+      margin: 4px 0 6px;
+    }
+    .cash-memo-badge {
+      display: inline-block;
+      padding: 2px 16px;
+      border: 1.5px solid #1e293b;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #1e293b;
     }
     .meta-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px 32px;
-      margin-bottom: 16px;
-      padding: 12px 16px;
+      gap: 2px 12px;
+      margin-bottom: 5px;
+      padding: 4px 8px;
       background: #f8fafc;
-      border-radius: 8px;
       border: 1px solid #e2e8f0;
     }
     .meta-item {
       display: flex;
-      align-items: center;
-      font-size: 13px;
+      font-size: 8px;
     }
     .meta-label {
       font-weight: 600;
       color: #475569;
-      min-width: 80px;
+      min-width: 44px;
     }
     .meta-value {
       color: #0f172a;
       font-weight: 500;
     }
     .section-title {
-      font-size: 14px;
+      font-size: 9px;
       font-weight: 700;
       color: #0f172a;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 8px;
-      padding-bottom: 4px;
+      margin-bottom: 3px;
+      padding-bottom: 2px;
       border-bottom: 1px solid #e2e8f0;
     }
     .patient-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 4px 32px;
-      padding: 8px 0;
-      margin-bottom: 12px;
+      gap: 1px 12px;
+      margin-bottom: 4px;
     }
     .patient-row {
       display: flex;
-      align-items: center;
-      font-size: 13px;
+      font-size: 8px;
     }
     .patient-label {
       font-weight: 600;
       color: #475569;
-      min-width: 70px;
+      min-width: 40px;
     }
     .patient-value {
       color: #0f172a;
       font-weight: 500;
     }
     .consultation-grid {
-      padding: 8px 0;
-      margin-bottom: 12px;
+      margin-bottom: 4px;
     }
     .consultation-row {
       display: flex;
-      align-items: center;
-      font-size: 13px;
-      margin-bottom: 4px;
+      font-size: 8px;
     }
     .consultation-label {
       font-weight: 600;
       color: #475569;
-      min-width: 100px;
+      min-width: 60px;
     }
     .consultation-value {
       color: #0f172a;
@@ -199,121 +186,96 @@ export function generateCashMemoPrint(data: CashMemoData) {
     }
     .services-table {
       width: 100%;
-      margin-bottom: 16px;
+      margin-bottom: 4px;
     }
     .services-table th {
       text-align: left;
-      padding: 8px 4px;
-      font-size: 13px;
+      padding: 3px 4px;
+      font-size: 8px;
       font-weight: 700;
       color: #0f172a;
       border-bottom: 1px solid #e2e8f0;
     }
-    .services-table th:last-child {
-      text-align: right;
-    }
+    .services-table th:last-child { text-align: right; }
     .services-table td {
-      padding: 6px 4px;
-      font-size: 13px;
+      padding: 2px 4px;
+      font-size: 8px;
       color: #334155;
-      border-bottom: none;
     }
-    .services-table td:last-child {
-      text-align: right;
-      font-weight: 600;
-    }
+    .services-table td:last-child { text-align: right; font-weight: 600; }
     .totals-area {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 20px;
+      margin-bottom: 5px;
       position: relative;
-      min-height: 130px;
     }
     .totals-left {
-      width: 45%;
+      width: 48%;
       position: relative;
     }
     .totals-right {
-      width: 40%;
+      width: 42%;
       margin-left: auto;
     }
     .total-row {
       display: flex;
       justify-content: space-between;
-      padding: 4px 0;
-      font-size: 13px;
+      padding: 1px 0;
+      font-size: 9px;
     }
-    .total-label {
-      font-weight: 600;
-      color: #475569;
-    }
-    .total-amount {
-      font-weight: 600;
-      color: #0f172a;
-    }
+    .total-label { font-weight: 600; color: #475569; }
+    .total-amount { font-weight: 600; color: #0f172a; }
     .total-row.net {
-      border-top: 2px solid #1e293b;
-      margin-top: 4px;
-      padding-top: 6px;
-      font-size: 15px;
+      border-top: 1.5px solid #1e293b;
+      margin-top: 2px;
+      padding-top: 2px;
+      font-size: 10px;
     }
     .total-row.net .total-label,
-    .total-row.net .total-amount {
-      font-weight: 800;
-      color: #0f172a;
-    }
-    .total-row.due .total-amount {
-      color: #dc2626;
-    }
+    .total-row.net .total-amount { font-weight: 800; color: #0f172a; }
+    .total-row.due .total-amount { color: #dc2626; }
     .in-words {
-      font-size: 12px;
+      font-size: 7px;
       color: #475569;
-      margin-top: 12px;
-      padding: 8px 12px;
+      margin-top: 3px;
+      padding: 3px 6px;
       background: #f8fafc;
-      border-radius: 6px;
       border: 1px solid #e2e8f0;
     }
-    .in-words strong {
-      color: #0f172a;
-    }
-    .payment-log {
-      margin-bottom: 20px;
-    }
-    .payment-log table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    .in-words strong { color: #0f172a; }
+    .payment-log { margin-bottom: 5px; }
+    .payment-log table { width: 100%; border-collapse: collapse; }
     .payment-log th {
       background: #f1f5f9;
-      padding: 8px 12px;
-      font-size: 12px;
+      padding: 2px 4px;
+      font-size: 7px;
       font-weight: 700;
       color: #475569;
       text-align: center;
       border: 1px solid #e2e8f0;
       text-transform: uppercase;
     }
-    .payment-log th:last-child {
-      text-align: right;
+    .payment-log th:last-child { text-align: right; }
+    .payment-log td {
+      padding: 2px 4px;
+      font-size: 7px;
+      border: 1px solid #e2e8f0;
     }
     .footer-tags {
       display: flex;
       justify-content: center;
-      gap: 24px;
-      padding-top: 14px;
-      border-top: 2px solid #e2e8f0;
-      margin-top: 8px;
+      gap: 10px;
+      padding-top: 4px;
+      border-top: 1.5px solid #e2e8f0;
     }
     .footer-tag {
-      padding: 6px 28px;
-      border: 1.5px solid #334155;
-      border-radius: 6px;
-      font-size: 12px;
+      padding: 2px 12px;
+      border: 1px solid #334155;
+      font-size: 7px;
       font-weight: 700;
       color: #334155;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
       text-transform: uppercase;
     }
     @media print {
@@ -328,7 +290,7 @@ export function generateCashMemoPrint(data: CashMemoData) {
     <!-- HEADER -->
     <div class="header-section">
       <div class="logo-area">
-        <img src="https://iili.io/Cf3Yo8b.png" alt="Micare Health" style="height:72px;width:auto;object-fit:contain;" />
+        <img src="https://iili.io/Cf3Yo8b.png" alt="Micare Health" style="height:32px;width:auto;object-fit:contain;" />
       </div>
       <div class="brand-area">
         <div class="brand-name">Micare Health</div>
@@ -423,7 +385,7 @@ export function generateCashMemoPrint(data: CashMemoData) {
           </tr>
         </thead>
         <tbody>
-          ${logRows || '<tr><td colspan="5" style="padding:10px;text-align:center;font-size:13px;color:#94a3b8;">No payment records</td></tr>'}
+          ${logRows || '<tr><td colspan="5" style="padding:4px;text-align:center;font-size:8px;color:#94a3b8;">No payment records</td></tr>'}
         </tbody>
       </table>
     </div>
