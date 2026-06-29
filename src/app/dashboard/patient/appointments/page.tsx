@@ -29,6 +29,11 @@ export default function PatientAppointments() {
   const [loading, setLoading] = useState(true);
   const [patientInfo, setPatientInfo] = useState<any>(null);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showInvoiceEditModal, setShowInvoiceEditModal] = useState(false);
+  const [editInvoiceApt, setEditInvoiceApt] = useState<any>(null);
+  const [editFeeType, setEditFeeType] = useState('new');
+  const [editAdvance, setEditAdvance] = useState(0);
+  const [savingInvoice, setSavingInvoice] = useState(false);
 
   const getStatusFromDate = (dateStr: string, currentStatus: string) => {
     if (currentStatus === 'cancelled') return 'cancelled';
@@ -298,6 +303,33 @@ const statusOrder: Record<string, number> = {
     });
   };
 
+  const handleSaveInvoice = async (shouldPrint: boolean) => {
+    if (!editInvoiceApt) return;
+    setSavingInvoice(true);
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ fee_type: editFeeType, advance: editAdvance })
+        .eq('id', editInvoiceApt.id);
+      if (error) throw error;
+
+      const updatedApt = { ...editInvoiceApt, fee_type: editFeeType, advance: editAdvance };
+      setAppointments(prev => prev.map(a => a.id === updatedApt.id ? updatedApt : a));
+      setSelectedApt((prev: any) => prev?.id === updatedApt.id ? updatedApt : prev);
+
+      setShowInvoiceEditModal(false);
+      setEditInvoiceApt(null);
+
+      if (shouldPrint) {
+        handlePrintInvoice(updatedApt);
+      }
+    } catch (err) {
+      console.error('Save invoice error:', err);
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
   if (loading) {
     return (
       <DashboardLayout role="patient">
@@ -466,9 +498,9 @@ const statusOrder: Record<string, number> = {
                     </button>
                     {(apt.status === 'confirmed' || apt.status === 'completed') && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); handlePrintInvoice(apt); }}
+                        onClick={(e) => { e.stopPropagation(); setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.advance || 0); setShowInvoiceEditModal(true); }}
                         className="flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 transition-colors"
-                        title="ইনভয়েস প্রিন্ট"
+                        title="ইনভয়েস"
                       >
                         <Receipt className="w-4 h-4" />
                         <span className="text-xs">ইনভয়েস</span>
@@ -561,13 +593,71 @@ const statusOrder: Record<string, number> = {
                   </Button>
                   {(selectedApt.status === 'confirmed' || selectedApt.status === 'completed') && (
                     <Button
-                      onClick={() => { setSelectedApt(selectedApt); handlePrintInvoice(selectedApt); }}
+                      onClick={() => { setEditInvoiceApt(selectedApt); setEditFeeType(selectedApt.fee_type || 'new'); setEditAdvance(selectedApt.advance || 0); setShowInvoiceEditModal(true); }}
                       className="w-full !bg-emerald-500 hover:!bg-emerald-600"
                     >
-                      <Receipt className="w-4 h-4 mr-2" /> ইনভয়েস প্রিন্ট করুন
+                      <Receipt className="w-4 h-4 mr-2" /> ইনভয়েস
                     </Button>
                   )}
                 </div>
+             </div>
+           )}
+         </Modal>
+
+         <Modal isOpen={showInvoiceEditModal} onClose={() => { setShowInvoiceEditModal(false); setEditInvoiceApt(null); }} title="ইনভয়েস" size="md">
+           {editInvoiceApt && (
+             <div className="space-y-5">
+               <div className="p-4 bg-sky-50 rounded-xl border border-sky-200">
+                 <p className="text-sm text-slate-500 mb-1">ডাক্তার</p>
+                 <p className="font-semibold">{editInvoiceApt.doctor}</p>
+               </div>
+
+               <div>
+                 <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
+                 <div className="grid grid-cols-3 gap-2">
+                   {FEE_TYPES.map((ft) => (
+                     <button key={ft.value} type="button" onClick={() => { setEditFeeType(ft.value); if (editAdvance > getFeeAmount(ft.value)) setEditAdvance(getFeeAmount(ft.value)); }}
+                       className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${editFeeType === ft.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-slate-300'}`}>
+                       <div className="font-semibold">{ft.label}</div>
+                       <div className="text-xs mt-0.5 opacity-75">৳{ft.amount}</div>
+                     </button>
+                   ))}
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                 <div>
+                   <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
+                   <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editFeeType)}</div>
+                 </div>
+                 <div>
+                   <label className="text-xs font-medium text-slate-500 mb-1 block">অগ্রিম টাকা (Advance)</label>
+                   <input
+                     type="number"
+                     min={0}
+                     max={getFeeAmount(editFeeType)}
+                     value={editAdvance}
+                     onChange={(e) => {
+                       const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editFeeType));
+                       setEditAdvance(val);
+                     }}
+                     className="input w-full text-center font-semibold"
+                   />
+                 </div>
+                 <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
+                   <span className="text-slate-500">বাকি (Due):</span>
+                   <span className="font-bold text-primary-600">৳{getFeeAmount(editFeeType) - editAdvance}</span>
+                 </div>
+               </div>
+
+               <div className="flex gap-3 pt-2">
+                 <Button onClick={() => handleSaveInvoice(true)} className="flex-1 !bg-emerald-500 hover:!bg-emerald-600" disabled={savingInvoice}>
+                   <Receipt className="w-4 h-4 mr-2" /> {savingInvoice ? 'সেভ হচ্ছে...' : 'সেভ এন্ড প্রিন্ট'}
+                 </Button>
+                 <Button onClick={() => handleSaveInvoice(false)} className="flex-1" variant="secondary" disabled={savingInvoice}>
+                   {savingInvoice ? 'সেভ হচ্ছে...' : 'সেভ'}
+                 </Button>
+               </div>
              </div>
            )}
          </Modal>
