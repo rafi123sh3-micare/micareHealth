@@ -645,7 +645,7 @@ const statusOrder: Record<string, number> = {
       const { error: aptError } = await supabase.from('appointments').insert({
         patient_id: newPatient.id, doctor_id: doctorData.id, date: walkinPatient.date,
         time: appointmentTime, status: 'confirmed', type: walkinPatient.type,
-        reason: walkinPatient.reason || 'ওয়াক-ইন', serial_number: serialNumber,
+        reason: walkinPatient.reason || null, serial_number: serialNumber,
         patient_mobile: walkinPatient.phone || '', fee_type: walkinPatient.fee_type,
         advance: walkinPatient.advance,
       });
