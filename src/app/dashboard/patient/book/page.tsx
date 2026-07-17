@@ -261,7 +261,7 @@ export default function PatientBook() {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' });
+    return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   const generateMeetLink = () => {

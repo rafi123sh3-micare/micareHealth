@@ -45,6 +45,8 @@ const NAV_ITEMS: NavItems = {
   ],
   doctor: [
     { href: '/dashboard/doctor', label: 'আজকের দিন', icon: LayoutDashboard, color: 'from-emerald-500 to-cyan-500' },
+    { href: '/dashboard/doctor/appointments', label: 'অ্যাপয়েন্টমেন্ট', icon: Calendar, color: 'from-orange-500 to-amber-500' },
+    { href: '/dashboard/doctor/reports', label: 'রিপোর্ট', icon: TrendingUp, color: 'from-amber-500 to-orange-500' },
   ],
   patient: [
     { href: '/dashboard/patient', label: 'হোম', icon: LayoutDashboard, color: 'from-cyan-500 to-blue-500' },

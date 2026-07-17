@@ -140,6 +140,7 @@ export default function DoctorDashboard() {
       .eq('doctor_id', doctorData.id)
       .eq('date', todayStr)
       .neq('status', 'cancelled')
+      .order('created_at', { ascending: true })
       .limit(50);
 
     const todayApts = supabaseApts || [];
@@ -171,7 +172,8 @@ export default function DoctorDashboard() {
         time: apt.time,
         patient: apt.patients?.name || 'রোগী',
         type: apt.type,
-        status: apt.status
+        status: apt.status,
+        serial_number: apt.serial_number || null
       }));
       setTodaySchedule(mapped);
       setCache('doctor_schedule', mapped);
@@ -352,39 +354,7 @@ export default function DoctorDashboard() {
         )}
 
         {/* Main Content Grid */}
-        <motion.div variants={itemVariants} className="grid lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>আজকের শিফট</CardTitle>
-              <Link href="/dashboard/doctor/schedule" className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
-                সব দেখুন <ArrowRight className="w-4 h-4" />
-              </Link>
-            </CardHeader>
-            {todayShifts.length > 0 ? (
-              <motion.div variants={containerVariants} className="space-y-3">
-                {todayShifts.map((shift, i) => (
-                  <motion.div key={i} variants={itemVariants} whileHover={{ x: 5 }} className="flex items-center gap-4 p-4 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100">
-                    <motion.div whileHover={{ rotate: 10 }} className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md">
-                      <Clock className="w-6 h-6" />
-                    </motion.div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-900">{shift.start_time} - {shift.end_time}</p>
-                      <p className="text-sm text-emerald-600">সক্রিয় শিফট</p>
-                    </div>
-                    <StatusPill status="active" />
-                  </motion.div>
-                ))}
-              </motion.div>
-            ) : (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8">
-                <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Clock className="w-7 h-7 text-slate-400" />
-                </div>
-                <p className="text-slate-500">আজ কোনো শিফট নেই</p>
-              </motion.div>
-            )}
-          </Card>
-
+        <motion.div variants={itemVariants} className="grid lg:grid-cols-1 gap-6">
           <Card>
             <CardHeader>
               <CardTitle>আজকের অ্যাপয়েন্টমেন্ট</CardTitle>
@@ -396,6 +366,9 @@ export default function DoctorDashboard() {
               <motion.div variants={containerVariants} className="space-y-3">
                 {todaySchedule.map((apt, i) => (
                   <motion.div key={i} variants={itemVariants} whileHover={{ x: 5 }} className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${apt.status === 'confirmed' ? 'bg-primary-50 border-primary-200' : apt.status === 'completed' ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'}`}>
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">
+                      {apt.serial_number || i + 1}
+                    </div>
                     <motion.div whileHover={{ scale: 1.1 }} className={`w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold shadow-md ${apt.status === 'confirmed' ? 'bg-gradient-to-br from-primary-500 to-primary-600' : apt.status === 'completed' ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : 'bg-gradient-to-br from-slate-400 to-slate-500'}`}>
                       {apt.time}
                     </motion.div>

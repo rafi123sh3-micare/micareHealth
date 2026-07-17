@@ -81,5 +81,5 @@ Serial Number: ${serialNumber}`;
 
 function formatDateBangla(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
 }

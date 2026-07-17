@@ -137,9 +137,7 @@ const statusOrder: Record<string, number> = {
         };
 
         const sorted = mapped.sort((a, b) => {
-          const aStatus = a.displayStatus;
-          const bStatus = b.displayStatus;
-          return (statusOrder[aStatus] || 99) - (statusOrder[bStatus] || 99);
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         });
 
         setAppointments(sorted);
@@ -176,7 +174,7 @@ const statusOrder: Record<string, number> = {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' });
+    return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   const formatTime = (timeStr: string) => {
@@ -636,11 +634,12 @@ const statusOrder: Record<string, number> = {
                      type="number"
                      min={0}
                      max={getFeeAmount(editFeeType)}
-                     value={editAdvance}
-                     onChange={(e) => {
-                       const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editFeeType));
-                       setEditAdvance(val);
-                     }}
+                      value={editAdvance || ''}
+                      placeholder="০"
+                      onChange={(e) => {
+                        const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editFeeType));
+                        setEditAdvance(val);
+                      }}
                      className="input w-full text-center font-semibold"
                    />
                  </div>
