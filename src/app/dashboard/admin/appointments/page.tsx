@@ -716,7 +716,7 @@ try {
         time: appointmentTime,
         status: 'confirmed',
         type: walkinPatient.type,
-        reason: walkinPatient.reason || 'ওয়াক-ইন',
+        reason: walkinPatient.reason || null,
         serial_number: serialNumber,
         patient_mobile: walkinPatient.phone || '',
         fee_type: walkinPatient.fee_type,
