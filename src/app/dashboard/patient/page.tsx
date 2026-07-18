@@ -150,7 +150,7 @@ export default function PatientDashboard() {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', weekday: 'short' });
+    return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', weekday: 'short' });
   };
 
   const quickActions = [

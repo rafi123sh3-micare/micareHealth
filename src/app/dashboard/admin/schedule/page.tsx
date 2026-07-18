@@ -26,7 +26,7 @@ const days = [
 const formatDate = (dateStr: string) =>
   new Date(dateStr).toLocaleDateString('bn-BD', {
     day: 'numeric',
-    month: 'short',
+    month: 'long',
     year: 'numeric',
   });
 
