@@ -290,7 +290,7 @@ export default function AdminDashboard() {
                   <Button
                     size="sm"
                     onClick={() => {
-                      window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${scannedPatient.id}`, '_blank');
+                      window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${scannedPatient.id}&source=micare`, '_blank');
                     }}
                   >
                     <FileText className="w-4 h-4 mr-1" /> প্রেসক্রিব

@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Zap, Printer, Scan, Receipt, Download } from 'lucide-react';
+import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Zap, Printer, Scan, Receipt, Download, Heart } from 'lucide-react';
+import VitalsModal from '@/components/prescribe/VitalsModal';
+import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
 import { supabase, supabase1, generateSerialNumber, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
@@ -108,8 +110,6 @@ export default function DoctorAppointments() {
   const [search, setSearch] = useState('');
   const [highlightedSerial, setHighlightedSerial] = useState<string | null>(null);
   const serialRowRef = useRef<HTMLTableRowElement | null>(null);
-  const [showPrescribeConfirm, setShowPrescribeConfirm] = useState(false);
-  const [prescribePatient, setPrescribePatient] = useState<any>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPatient, setHistoryPatient] = useState<any>(null);
@@ -142,6 +142,11 @@ export default function DoctorAppointments() {
   const [editFeeType, setEditFeeType] = useState('new');
   const [editAdvance, setEditAdvance] = useState(0);
   const [savingInvoice, setSavingInvoice] = useState(false);
+
+  // Vitals modal state
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [vitalsAppointment, setVitalsAppointment] = useState<any>(null);
+  const [vitalsData, setVitalsData] = useState<Record<string, VitalsData>>({});
 
   useEffect(() => {
     loadAppointments();
@@ -291,6 +296,12 @@ const statusOrder: Record<string, number> = {
       });
 
       setAppointments(sorted);
+
+      const vitalsMap: Record<string, VitalsData> = {};
+      for (const apt of sorted) {
+        if (apt.vitals) vitalsMap[apt.id] = apt.vitals;
+      }
+      setVitalsData(vitalsMap);
     }
     setLoading(false);
   }
@@ -604,7 +615,7 @@ const statusOrder: Record<string, number> = {
         .eq('bcode', code)
         .maybeSingle();
       if (patient) {
-        window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${patient.id}`, '_blank');
+        window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${patient.id}&source=micare`, '_blank');
       } else {
         toast.error('কোনো রোগী খুঁজে পাওয়া যায়নি');
       }
@@ -722,8 +733,36 @@ const statusOrder: Record<string, number> = {
   };
 
   const handlePrescribe = async (apt: any) => {
-    setPrescribePatient({ patient_id: apt.patient_id });
-    setShowPrescribeConfirm(true);
+    const patientData = {
+      name: apt.patients?.name || '',
+      age: apt.patients?.age || '',
+      gender: apt.patients?.sex || 'male',
+      weight: '',
+      phone: apt.patients?.phone || '',
+      vitals: vitalsData[apt.id] || apt.vitals || null,
+    };
+    sessionStorage.setItem(`careRx_patient_data_${apt.patient_id}`, JSON.stringify(patientData));
+    window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${apt.patient_id}&source=micare`, '_blank');
+  };
+
+  const handleVitals = (apt: any) => {
+    setVitalsAppointment(apt);
+    setShowVitalsModal(true);
+  };
+
+  const handleSaveVitals = async (vitals: VitalsData) => {
+    if (!vitalsAppointment) return;
+    try {
+      await fetch('/api/vitals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId: vitalsAppointment.id, vitals }),
+      });
+      setVitalsData(prev => ({ ...prev, [vitalsAppointment.id]: vitals }));
+      toast.success('ভাইটালস সংরক্ষিত হয়েছে');
+    } catch (err: any) {
+      toast.error('ভাইটালস সংরক্ষণ ব্যর্থ');
+    }
   };
 
   const handleHistory = async (apt: any) => {
@@ -879,8 +918,9 @@ const statusOrder: Record<string, number> = {
     const pPhone = (apt.patients?.phone || '-').replace(/[<>]/g, '');
     const dName = (apt.doctors?.name || '').replace(/[<>]/g, '');
     const dDegree = (apt.doctors?.degree || '').replace(/[<>]/g, '');
-    const dSpecialty = (apt.doctors?.specialty || '').replace(/[<>]/g, '');
-    const dCreds = dDegree + (dDegree && dSpecialty ? ', ' : '') + dSpecialty;
+    const dDesignation = (apt.doctors?.designation || '').replace(/[<>]/g, '');
+    const dSpecialty = (apt.doctors?.specialty || apt.doctors?.specialization || '').replace(/[<>]/g, '');
+    const dCreds = [dDegree, dDesignation, dSpecialty].filter(Boolean).join(', ');
     const pSerial = apt.serial_number || null;
     const pSerialDisplay = pSerial || '-';
     pw.document.write(`<html><head><title>Appointment Slip</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"><\/script><style>@page{size:4.13in 2.17in;margin:2mm}body{font-family:sans-serif;padding:6px;max-width:100%;margin:0 auto;font-size:8px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.details{margin-bottom:4px}.details div{margin-bottom:1px;font-size:8px}.label{font-weight:600;color:#555;display:inline-block;width:65px;font-size:8px}.consultant{border-top:1px solid #e2e8f0;padding-top:3px;font-size:8px}.consultant .info{display:inline-block;vertical-align:top}.consultant .name{font-weight:500}.consultant .degree{font-size:7px;color:#666;word-break:break-word;white-space:pre-line}img.logo{height:22px;width:auto}@media print{body{padding:3px}}</style></head><body><div class="header"><div><svg id="barcode"></svg></div><img src="https://iili.io/Cf3Yo8b.png" class="logo" /></div><div class="details"><div><span class="label">Patient Serial:</span>${pSerialDisplay}</div><div><span class="label">Patient Name:</span>${pName}</div><div><span class="label">Gender:</span>${pGender.charAt(0).toUpperCase() + pGender.slice(1)}<span style="margin-left:50px;font-weight:600;color:#555;">Age:</span> ${pAge}</div><div><span class="label">Phone:</span>${pPhone}</div></div><div class="consultant"><span class="label" style="vertical-align:top;">Consultant:</span><div class="info"><div class="name">${dName}</div><div class="degree">${dCreds}</div></div></div><script>${bcode ? `JsBarcode("#barcode","${bcode}",{format:"CODE128",width:1.5,height:50,displayValue:false,margin:5});` : ''}setTimeout(function(){window.print()},500);<\/script></body></html>`);
@@ -1124,6 +1164,7 @@ const statusOrder: Record<string, number> = {
                                 <button onClick={() => handleApprove(apt, apt.status)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="পুনরুদ্ধার করুন"><Check className="w-4 h-4" /></button>
                               )}
                               <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>
+                              <button onClick={() => handleVitals(apt)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="ভাইটালস"><Heart className="w-4 h-4" /></button>
                               <button onClick={() => handleHistory(apt)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="ইতিহাস"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handlePrintSlipFromTable(apt)} className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors" title="স্লিপ প্রিন্ট"><Printer className="w-4 h-4" /></button>
                               <button onClick={() => { setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.advance || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
@@ -1132,6 +1173,7 @@ const statusOrder: Record<string, number> = {
                           {apt.status === 'completed' && (
                             <div className="flex items-center justify-end gap-1">
                               <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>
+                              <button onClick={() => handleVitals(apt)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="ভাইটালস"><Heart className="w-4 h-4" /></button>
                               <button onClick={() => handleHistory(apt)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="ইতিহাস"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handlePrintSlipFromTable(apt)} className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors" title="স্লিপ প্রিন্ট"><Printer className="w-4 h-4" /></button>
                               <button onClick={() => { setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.advance || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
@@ -1288,21 +1330,12 @@ const statusOrder: Record<string, number> = {
               patientBcode={qrAppointment.patients?.bcode || ''}
               doctorName={qrAppointment.doctors?.name || ''}
               doctorDegree={qrAppointment.doctors?.degree || ''}
+              doctorDesignation={qrAppointment.doctors?.designation || ''}
               doctorSpecialty={qrAppointment.doctors?.specialty || ''}
             />
                 <Button onClick={() => handlePrintSlip(qrAppointment)} className="w-full">প্রিন্ট করুন</Button>
           </div>
         )}
-      </Modal>
-
-      <Modal isOpen={showPrescribeConfirm} onClose={() => setShowPrescribeConfirm(false)} title="প্রেসক্রিব নিশ্চিতকরণ" size="sm">
-        <div className="space-y-4">
-          <p>আপনি কি রোগী <strong>{prescribePatient?.patient_name}</strong> এর জন্য প্রেসক্রিব পেজে যেতে চান?</p>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => setShowPrescribeConfirm(false)} className="flex-1">বাতিল</Button>
-            <Button onClick={() => { window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${prescribePatient?.patient_id}`, '_blank'); setShowPrescribeConfirm(false); }} className="flex-1">যেতে চান</Button>
-          </div>
-        </div>
       </Modal>
 
       <Modal isOpen={showHistoryModal} onClose={() => { setShowHistoryModal(false); setHistoryStep(-1); }} title="রোগী ইতিহাস" size="xl">
@@ -1328,66 +1361,6 @@ const statusOrder: Record<string, number> = {
                         </button>
                       ))}
                     </div>
-
-                    <div className="border-t border-slate-200 pt-6">
-                      <h3 className="text-xl font-bold text-emerald-700 mb-4">ভাইটালস</h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">পালস (Pulse)</label>
-                          <input type="number" placeholder="bpm" value={vitalData.pulse} onChange={(e) => setVitalData({...vitalData, pulse: e.target.value})} className="input w-full" />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">BP (Systolic)</label>
-                          <input type="number" placeholder="mmHg" value={vitalData.bp_systolic} onChange={(e) => setVitalData({...vitalData, bp_systolic: e.target.value})} className="input w-full" />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">BP (Diastolic)</label>
-                          <input type="number" placeholder="mmHg" value={vitalData.bp_diastolic} onChange={(e) => setVitalData({...vitalData, bp_diastolic: e.target.value})} className="input w-full" />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">ওজন (kg)</label>
-                          <input type="number" placeholder="kg" value={vitalData.weight} onChange={(e) => { const w = e.target.value; const htCm = ((parseFloat(vitalData.height_ft) || 0) * 12 + (parseFloat(vitalData.height_in) || 0)) * 2.54; const wt = parseFloat(w); setVitalData({...vitalData, weight: w, bmi: (wt > 0 && htCm > 0) ? (wt / ((htCm / 100) * (htCm / 100))).toFixed(1) : ''}); }} className="input w-full" />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">উচ্চতা</label>
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <input type="number" placeholder="ফুট" min="0" max="8" value={vitalData.height_ft} onChange={(e) => {
-                                const ft = e.target.value;
-                                const htCm = ((parseFloat(ft) || 0) * 12 + (parseFloat(vitalData.height_in) || 0)) * 2.54;
-                                const wt = parseFloat(vitalData.weight);
-                                setVitalData({...vitalData, height_ft: ft, bmi: (wt > 0 && htCm > 0) ? (wt / ((htCm / 100) * (htCm / 100))).toFixed(1) : ''});
-                              }} className="input w-full" />
-                              <span className="text-[10px] text-slate-400">ফুট</span>
-                            </div>
-                            <div className="flex-1">
-                              <input type="number" placeholder="ইঞ্চি" min="0" max="11" value={vitalData.height_in} onChange={(e) => {
-                                const inch = e.target.value;
-                                const htCm = ((parseFloat(vitalData.height_ft) || 0) * 12 + (parseFloat(inch) || 0)) * 2.54;
-                                const wt = parseFloat(vitalData.weight);
-                                setVitalData({...vitalData, height_in: inch, bmi: (wt > 0 && htCm > 0) ? (wt / ((htCm / 100) * (htCm / 100))).toFixed(1) : ''});
-                              }} className="input w-full" />
-                              <span className="text-[10px] text-slate-400">ইঞ্চি</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">BMI</label>
-                          <input type="text" value={vitalData.bmi} readOnly className="input w-full bg-slate-50" />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">SpO2 (%)</label>
-                          <input type="number" placeholder="%" value={vitalData.spo2} onChange={(e) => setVitalData({...vitalData, spo2: e.target.value})} className="input w-full" />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-slate-600 mb-1 block">তাপমাত্রা (°C)</label>
-                          <input type="number" step="0.1" placeholder="°C" value={vitalData.temp} onChange={(e) => setVitalData({...vitalData, temp: e.target.value})} className="input w-full" />
-                        </div>
-                      </div>
-                      <div className="flex justify-end pt-4 mt-4 border-t border-slate-200">
-                        <Button onClick={saveVitals}>সংরক্ষণ করুন</Button>
-                      </div>
-                    </div>
                   </div>
                 );
               }
@@ -1408,6 +1381,14 @@ const statusOrder: Record<string, number> = {
           )}
         </div>
       </Modal>
+
+      <VitalsModal
+        isOpen={showVitalsModal}
+        onClose={() => { setShowVitalsModal(false); setVitalsAppointment(null); }}
+        onSave={handleSaveVitals}
+        initialVitals={vitalsAppointment ? (vitalsData[vitalsAppointment.id] || vitalsAppointment.vitals) : undefined}
+        patientName={vitalsAppointment?.patients?.name}
+      />
     </DashboardLayout>
   );
 }

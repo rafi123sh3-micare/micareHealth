@@ -19,6 +19,7 @@ export default function DoctorProfile() {
     phone: '',
     specialization: '',
     degree: '',
+    designation: '',
     consultation_fee: '',
   });
   const [showPasscode, setShowPasscode] = useState(false);
@@ -33,6 +34,7 @@ export default function DoctorProfile() {
         phone: data.phone || '',
         specialization: data.specialization || '',
         degree: data.degree || '',
+        designation: data.designation || '',
         consultation_fee: data.consultation_fee?.toString() || '',
       });
       loadAppointments(data.id);
@@ -75,6 +77,7 @@ export default function DoctorProfile() {
         phone: formData.phone,
         specialization: formData.specialization,
         degree: formData.degree,
+        designation: formData.designation,
       })
       .eq('id', doctorData.id);
 
@@ -183,6 +186,21 @@ export default function DoctorProfile() {
                   value={formData.degree}
                   onChange={(e) => setFormData({ ...formData, degree: e.target.value })}
                   disabled={!editing}
+                  className="input pl-11"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-600">পদবি (Designation)</label>
+              <div className="relative">
+                <Award className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  value={formData.designation}
+                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                  disabled={!editing}
+                  placeholder="যেমন: Chief Consultant (Orthopedics & Sports Medicine)"
                   className="input pl-11"
                 />
               </div>

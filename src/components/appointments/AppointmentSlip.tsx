@@ -13,6 +13,7 @@ interface AppointmentSlipProps {
   patientPhone: string;
   doctorName: string;
   doctorDegree?: string;
+  doctorDesignation?: string;
   doctorSpecialty?: string;
   patientBcode?: string;
 }
@@ -26,6 +27,7 @@ export function AppointmentSlip({
   patientPhone,
   doctorName,
   doctorDegree,
+  doctorDesignation,
   doctorSpecialty,
   patientBcode: initialBcode,
 }: AppointmentSlipProps) {
@@ -99,9 +101,9 @@ export function AppointmentSlip({
           <span className="font-semibold text-slate-600 min-w-[100px] shrink-0">Consultant:</span>
           <div className="min-w-0">
             <p className="font-medium text-slate-800">{doctorName}</p>
-            {(doctorDegree || doctorSpecialty) && (
+            {(doctorDegree || doctorDesignation || doctorSpecialty) && (
               <p className="text-sm text-slate-600 mt-0.5 leading-relaxed whitespace-pre-line break-words">
-                {doctorDegree}{doctorDegree && doctorSpecialty ? ', ' : ''}{doctorSpecialty}
+                {[doctorDegree, doctorDesignation, doctorSpecialty].filter(Boolean).join(', ')}
               </p>
             )}
           </div>

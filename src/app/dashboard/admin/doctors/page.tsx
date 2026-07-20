@@ -43,6 +43,7 @@ export default function AdminDoctors() {
     specialty: '',
     phone: '',
     degree: '',
+    designation: '',
     fee: 500,
     experience: '',
     zoom_link: ''
@@ -93,6 +94,7 @@ export default function AdminDoctors() {
       email: newDoctor.email,
       specialization: newDoctor.specialty,
       degree: newDoctor.degree,
+      designation: newDoctor.designation,
       phone: newDoctor.phone,
       consultation_fee: newDoctor.fee,
       experience: newDoctor.experience || '০ বছর',
@@ -332,6 +334,12 @@ export default function AdminDoctors() {
                 value={newDoctor.degree}
                 onChange={(e) => setNewDoctor({ ...newDoctor, degree: e.target.value })}
                 placeholder="যেমন: MBBS, FCPS"
+              />
+              <Input
+                label="পদবি (Designation)"
+                value={newDoctor.designation}
+                onChange={(e) => setNewDoctor({ ...newDoctor, designation: e.target.value })}
+                placeholder="যেমন: Chief Consultant (Orthopedics)"
               />
               <Input
                 label="ফোন নম্বর"

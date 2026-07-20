@@ -68,7 +68,7 @@ export default function PatientAppointments() {
 
       const { data: apts } = await supabase
         .from('appointments')
-        .select('*, doctors(name, specialization, degree, specialty)')
+        .select('*, doctors(name, specialization, degree, specialty, designation)')
         .eq('patient_id', patientData.id)
         .order('date', { ascending: true });
 
@@ -121,7 +121,8 @@ export default function PatientAppointments() {
             doctorId: apt.doctor_id,
             specialization: apt.doctors?.specialization,
             doctor_degree: apt.doctors?.degree,
-            doctor_specialty: apt.doctors?.specialty,
+            doctor_designation: apt.doctors?.designation,
+            doctor_specialty: apt.doctors?.specialty || apt.doctors?.specialization,
             displayStatus: getStatusFromDate(apt.date, apt.status),
             time_range: timeRange,
             scheduleStart
@@ -212,8 +213,9 @@ const statusOrder: Record<string, number> = {
     const pPhone = (patientInfo?.phone || '-').replace(/[<>]/g, '');
     const dName = (selectedApt.doctor || '').replace(/[<>]/g, '');
     const dDegree = (selectedApt.doctor_degree || '').replace(/[<>]/g, '');
+    const dDesignation = (selectedApt.doctor_designation || '').replace(/[<>]/g, '');
     const dSpecialty = (selectedApt.doctor_specialty || '').replace(/[<>]/g, '');
-    const dCreds = dDegree + (dDegree && dSpecialty ? ', ' : '') + dSpecialty;
+    const dCreds = [dDegree, dDesignation, dSpecialty].filter(Boolean).join(', ');
     const pSerial = selectedApt.serial_number || null;
     const pSerialDisplay = pSerial || '-';
     pw.document.write(`<html><head><title>Appointment Slip</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"><\/script><style>@page{size:4.13in 2.17in;margin:2mm}body{font-family:sans-serif;padding:6px;max-width:100%;margin:0 auto;font-size:8px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.details{margin-bottom:4px}.details div{margin-bottom:1px;font-size:8px}.label{font-weight:600;color:#555;display:inline-block;width:65px;font-size:8px}.consultant{border-top:1px solid #e2e8f0;padding-top:3px;font-size:8px}.consultant .info{display:inline-block;vertical-align:top}.consultant .name{font-weight:500}.consultant .degree{font-size:7px;color:#666;word-break:break-word;white-space:pre-line}img.logo{height:22px;width:auto}@media print{body{padding:3px}}</style></head><body><div class="header"><div><svg id="barcode"></svg></div><img src="https://iili.io/Cf3Yo8b.png" class="logo" /></div><div class="details"><div><span class="label">Patient Serial:</span>${pSerialDisplay}</div><div><span class="label">Patient Name:</span>${pName}</div><div><span class="label">Gender:</span>${pGender.charAt(0).toUpperCase() + pGender.slice(1)}<span style="margin-left:50px;font-weight:600;color:#555;">Age:</span> ${pAge}</div><div><span class="label">Phone:</span>${pPhone}</div></div><div class="consultant"><span class="label" style="vertical-align:top;">Consultant:</span><div class="info"><div class="name">${dName}</div>${dCreds ? `<div class="degree">${dCreds}</div>` : ''}</div></div><script>${bcode ? `JsBarcode("#barcode","${bcode}",{format:"CODE128",width:1.5,height:50,displayValue:false,margin:5});` : ''}setTimeout(function(){window.print()},500);<\/script></body></html>`);
@@ -240,8 +242,9 @@ const statusOrder: Record<string, number> = {
     const pPhone = (patientInfo?.phone || '-').replace(/[<>]/g, '');
     const dName = (apt.doctor || '').replace(/[<>]/g, '');
     const dDegree = (apt.doctor_degree || '').replace(/[<>]/g, '');
+    const dDesignation = (apt.doctor_designation || '').replace(/[<>]/g, '');
     const dSpecialty = (apt.doctor_specialty || '').replace(/[<>]/g, '');
-    const dCreds = dDegree + (dDegree && dSpecialty ? ', ' : '') + dSpecialty;
+    const dCreds = [dDegree, dDesignation, dSpecialty].filter(Boolean).join(', ');
     const pSerial = apt.serial_number || null;
     const pSerialDisplay = pSerial || '-';
     pw.document.write(`<html><head><title>Appointment Slip</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"><\/script><style>@page{size:4.13in 2.17in;margin:2mm}body{font-family:sans-serif;padding:6px;max-width:100%;margin:0 auto;font-size:8px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.details{margin-bottom:4px}.details div{margin-bottom:1px;font-size:8px}.label{font-weight:600;color:#555;display:inline-block;width:65px;font-size:8px}.consultant{border-top:1px solid #e2e8f0;padding-top:3px;font-size:8px}.consultant .info{display:inline-block;vertical-align:top}.consultant .name{font-weight:500}.consultant .degree{font-size:7px;color:#666;word-break:break-word;white-space:pre-line}img.logo{height:22px;width:auto}@media print{body{padding:3px}}</style></head><body><div class="header"><div><svg id="barcode"></svg></div><img src="https://iili.io/Cf3Yo8b.png" class="logo" /></div><div class="details"><div><span class="label">Patient Serial:</span>${pSerialDisplay}</div><div><span class="label">Patient Name:</span>${pName}</div><div><span class="label">Gender:</span>${pGender.charAt(0).toUpperCase() + pGender.slice(1)}<span style="margin-left:50px;font-weight:600;color:#555;">Age:</span> ${pAge}</div><div><span class="label">Phone:</span>${pPhone}</div></div><div class="consultant"><span class="label" style="vertical-align:top;">Consultant:</span><div class="info"><div class="name">${dName}</div>${dCreds ? `<div class="degree">${dCreds}</div>` : ''}</div></div><script>${bcode ? `JsBarcode("#barcode","${bcode}",{format:"CODE128",width:1.5,height:50,displayValue:false,margin:5});` : ''}setTimeout(function(){window.print()},500);<\/script></body></html>`);
@@ -675,6 +678,7 @@ const statusOrder: Record<string, number> = {
                   patientBcode={patientInfo?.bcode || ''}
                    doctorName={selectedApt.doctor || ''}
                    doctorDegree={selectedApt.doctor_degree || ''}
+                   doctorDesignation={selectedApt.doctor_designation || ''}
                    doctorSpecialty={selectedApt.doctor_specialty || ''}
                  />
                <Button onClick={handlePrintSlip} className="w-full">প্রিন্ট করুন</Button>
