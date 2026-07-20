@@ -101,10 +101,8 @@ export function AppointmentSlip({
           <span className="font-semibold text-slate-600 min-w-[100px] shrink-0">Consultant:</span>
           <div className="min-w-0">
             <p className="font-medium text-slate-800">{doctorName}</p>
-            {(doctorDegree || doctorDesignation || doctorSpecialty) && (
-              <p className="text-sm text-slate-600 mt-0.5 leading-relaxed whitespace-pre-line break-words">
-                {[doctorDegree, doctorDesignation, doctorSpecialty].filter(Boolean).join(', ')}
-              </p>
+            {doctorDesignation && (
+              <p className="text-sm text-slate-600 mt-0.5 leading-relaxed whitespace-pre-line break-words">{doctorDesignation}</p>
             )}
           </div>
         </div>
