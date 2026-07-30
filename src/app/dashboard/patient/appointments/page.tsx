@@ -264,8 +264,8 @@ const statusOrder: Record<string, number> = {
     const billNo = `INV-${apt.serial_number || apt.id?.substring(0, 8) || '0000'}-${today.getTime().toString().slice(-4)}`;
     const feeAmt = getFeeAmount(apt.fee_type);
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
-    const advancePaid = apt.advance || 0;
-    const dueAmt = feeAmt - advancePaid;
+    const advancePaid = apt.paid || 0;
+    const dueAmt = Math.max(0, feeAmt - (apt.refunded || 0) - advancePaid);
 
     generateCashMemoPrint({
       billNo,
@@ -285,12 +285,12 @@ const statusOrder: Record<string, number> = {
         { name: `${feeLabel} Fee (${apt.doctor || 'Doctor'})`, amount: feeAmt },
       ],
       subTotal: feeAmt,
-      netPayable: feeAmt,
+      netPayable: feeAmt - (apt.refunded || 0),
       advance: advancePaid,
-      refund: 0,
+      refund: apt.refunded || 0,
       due: dueAmt,
-      inWords: numberToWords(dueAmt),
-      isPaid: dueAmt <= 0,
+      inWords: numberToWords(feeAmt - (apt.refunded || 0)),
+      isPaid: (feeAmt - (apt.refunded || 0) - advancePaid) <= 0,
       paymentLog: [
         {
           paymentType: feeLabel,
@@ -313,7 +313,7 @@ const statusOrder: Record<string, number> = {
         .eq('id', editInvoiceApt.id);
       if (error) throw error;
 
-      const updatedApt = { ...editInvoiceApt, fee_type: editFeeType, advance: editAdvance };
+      const updatedApt = { ...editInvoiceApt, fee_type: editFeeType, advance: editAdvance, paid: editAdvance };
       setAppointments(prev => prev.map(a => a.id === updatedApt.id ? updatedApt : a));
       setSelectedApt((prev: any) => prev?.id === updatedApt.id ? updatedApt : prev);
 
@@ -498,7 +498,7 @@ const statusOrder: Record<string, number> = {
                     </button>
                     {(apt.status === 'confirmed' || apt.status === 'completed') && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.advance || 0); setShowInvoiceEditModal(true); }}
+                        onClick={(e) => { e.stopPropagation(); setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.paid || apt.advance || 0); setShowInvoiceEditModal(true); }}
                         className="flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 transition-colors"
                         title="ইনভয়েস"
                       >
@@ -593,7 +593,7 @@ const statusOrder: Record<string, number> = {
                   </Button>
                   {(selectedApt.status === 'confirmed' || selectedApt.status === 'completed') && (
                     <Button
-                      onClick={() => { setEditInvoiceApt(selectedApt); setEditFeeType(selectedApt.fee_type || 'new'); setEditAdvance(selectedApt.advance || 0); setShowInvoiceEditModal(true); }}
+                      onClick={() => { setEditInvoiceApt(selectedApt); setEditFeeType(selectedApt.fee_type || 'new'); setEditAdvance(selectedApt.paid || selectedApt.advance || 0); setShowInvoiceEditModal(true); }}
                       className="w-full !bg-emerald-500 hover:!bg-emerald-600"
                     >
                       <Receipt className="w-4 h-4 mr-2" /> ইনভয়েস

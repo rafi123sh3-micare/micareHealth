@@ -1193,7 +1193,7 @@ const statusOrder: Record<string, number> = {
                       </td>
                       <td className="px-4 py-3">{getStatusBadge(apt.status, apt.displayStatus)}</td>
                       <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
-                       <td className="px-4 py-3 text-right font-medium text-amber-600">৳{(apt.paid || 0) - (apt.refunded || 0)}</td>
+                       <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
                        <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
                       <td className="px-4 py-3 text-center">
                         {apt.status !== 'completed' && apt.status !== 'cancelled' ? (
