@@ -104,10 +104,13 @@ export default function DoctorReports() {
     const monthTele = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr && (a.status === 'confirmed' || a.status === 'completed') && a.type === 'teleconsult');
     const monthPatients = new Set(monthAll.map((a: any) => a.patient_id)).size;
 
-    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.doctors?.consultation_fee) || 500), 0);
+    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + ((Number(a.paid) || 0) - (Number(a.refunded) || 0)), 0);
 
-    setDailyEarnings(calcEarnings(todayCompleted) + calcEarnings(todayTele));
-    setMonthlyEarnings(calcEarnings(monthCompleted) + calcEarnings(monthTele));
+    const todayAllForEarnings = allApts.filter((a: any) => a.date === filterDate);
+    const monthAllForEarnings = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
+
+    setDailyEarnings(calcEarnings(todayAllForEarnings));
+    setMonthlyEarnings(calcEarnings(monthAllForEarnings));
     setDailyCompleted(calcEarnings(todayCompleted));
     setMonthlyCompleted(calcEarnings(monthCompleted));
     setDailyTeleconsult(calcEarnings(todayTele));

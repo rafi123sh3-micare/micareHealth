@@ -123,23 +123,21 @@ export default function AdminReports() {
     const monthTele = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr && (a.status === 'confirmed' || a.status === 'completed') && a.type === 'teleconsult');
     const monthPatients = new Set(monthAll.map((a: any) => a.patient_id)).size;
 
-    // Earnings
-    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.doctors?.consultation_fee) || 500), 0);
-    
-    const dCompleted = calcEarnings(todayCompleted);
-    const dTele = calcEarnings(todayTele);
-    const dTotal = dCompleted + dTele;
+    // Earnings — sum net (paid - refunded) from all appointments, regardless of status
+    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + ((Number(a.paid) || 0) - (Number(a.refunded) || 0)), 0);
 
-    const mCompleted = calcEarnings(monthCompleted);
-    const mTele = calcEarnings(monthTele);
-    const mTotal = mCompleted + mTele;
+    const todayAllForEarnings = allApts.filter((a: any) => a.date === filterDate);
+    const monthAllForEarnings = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
+
+    const dTotal = calcEarnings(todayAllForEarnings);
+    const mTotal = calcEarnings(monthAllForEarnings);
 
     setDailyEarnings(dTotal);
     setMonthlyEarnings(mTotal);
-    setDailyCompleted(dCompleted);
-    setMonthlyCompleted(mCompleted);
-    setDailyTeleconsult(dTele);
-    setMonthlyTeleconsult(mTele);
+    setDailyCompleted(calcEarnings(todayCompleted));
+    setMonthlyCompleted(calcEarnings(monthCompleted));
+    setDailyTeleconsult(calcEarnings(todayTele));
+    setMonthlyTeleconsult(calcEarnings(monthTele));
 
     // Added money
     const dAdded = addedMoneyData.filter((t: any) => t.date === filterDate).reduce((sum: number, t: any) => sum + Number(t.amount), 0);

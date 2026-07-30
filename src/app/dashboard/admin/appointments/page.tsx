@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, CheckCircle, Plus, Zap, FileText, Upload, Printer, Scan, Receipt, Download, Heart } from 'lucide-react';
+import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, CheckCircle, Plus, Zap, FileText, Upload, Printer, Scan, Receipt, Download, Heart, Pencil } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
@@ -127,6 +127,7 @@ export default function AdminAppointments() {
   const [filterDate, setFilterDate] = useState(getLocalDateString());
   const [filterDoctor, setFilterDoctor] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterUnpaid, setFilterUnpaid] = useState('');
   const [search, setSearch] = useState('');
 
   const [showWalkinModal, setShowWalkinModal] = useState(false);
@@ -154,9 +155,15 @@ export default function AdminAppointments() {
   const [qrAppointment, setQRAppointment] = useState<any>(null);
   const [showInvoiceEditModal, setShowInvoiceEditModal] = useState(false);
   const [editInvoiceApt, setEditInvoiceApt] = useState<any>(null);
-  const [editFeeType, setEditFeeType] = useState('new');
-  const [editAdvance, setEditAdvance] = useState(0);
+  const [editPaid, setEditPaid] = useState(0);
+  const [editRefunded, setEditRefunded] = useState(0);
   const [savingInvoice, setSavingInvoice] = useState(false);
+
+  // Edit patient state
+  const [showEditPatientModal, setShowEditPatientModal] = useState(false);
+  const [editPatientApt, setEditPatientApt] = useState<any>(null);
+  const [editPatientForm, setEditPatientForm] = useState({ name: '', phone: '', age: '', sex: 'male' });
+  const [savingPatient, setSavingPatient] = useState(false);
 
   // Vitals modal state
   const [showVitalsModal, setShowVitalsModal] = useState(false);
@@ -404,6 +411,8 @@ export default function AdminAppointments() {
     if (filterDate && apt.date !== filterDate) return false;
     if (filterDoctor && apt.doctor_id !== filterDoctor) return false;
     if (filterStatus && apt.status !== filterStatus && apt.displayStatus !== filterStatus) return false;
+    if (filterUnpaid === 'yes' && (apt.paid || 0) > 0) return false;
+    if (filterUnpaid === 'no' && (apt.paid || 0) === 0) return false;
     if (search) {
       const searchLower = search.toLowerCase();
       const patientMatch = apt.patientName?.toLowerCase().includes(searchLower);
@@ -870,6 +879,47 @@ try {
     }
   };
 
+  const handleEditPatient = (apt: any) => {
+    setEditPatientApt(apt);
+    setEditPatientForm({
+      name: apt.patients?.name || '',
+      phone: apt.patients?.phone || '',
+      age: apt.patients?.age?.toString() || '',
+      sex: apt.patients?.sex || 'male',
+    });
+    setShowEditPatientModal(true);
+  };
+
+  const handleSavePatientDetails = async () => {
+    if (!editPatientApt) return;
+    setSavingPatient(true);
+    try {
+      const { error } = await supabase
+        .from('patients')
+        .update({
+          name: editPatientForm.name,
+          phone: editPatientForm.phone,
+          age: parseInt(editPatientForm.age) || 0,
+          sex: editPatientForm.sex,
+        })
+        .eq('id', editPatientApt.patient_id);
+      if (error) throw error;
+
+      const updated = { ...editPatientApt };
+      if (updated.patients) {
+        updated.patients = { ...updated.patients, ...editPatientForm, age: parseInt(editPatientForm.age) || 0 };
+      }
+      setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
+      toast.success('রোগীর তথ্য আপডেট হয়েছে');
+      setShowEditPatientModal(false);
+      setEditPatientApt(null);
+    } catch (err: any) {
+      toast.error('আপডেট ব্যর্থ');
+    } finally {
+      setSavingPatient(false);
+    }
+  };
+
   const handleHistory = async (apt: any) => {
     setHistoryPatient({
       patient_id: apt.patient_id,
@@ -1085,8 +1135,8 @@ try {
     const billNo = `INV-${apt.serial_number || apt.id?.substring(0, 8) || '0000'}-${today.getTime().toString().slice(-4)}`;
     const feeAmt = getFeeAmount(apt.fee_type);
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
-    const advancePaid = apt.advance || 0;
-    const dueAmt = feeAmt - advancePaid;
+    const paidAmt = apt.paid || 0;
+    const refundedAmt = apt.refunded || 0;
 
     generateCashMemoPrint({
       billNo,
@@ -1106,11 +1156,11 @@ try {
         { name: `${feeLabel} Fee (${apt.doctors?.name || apt.doctorName || 'Doctor'})`, amount: feeAmt },
       ],
       subTotal: feeAmt,
-      netPayable: feeAmt,
-      advance: advancePaid,
-      due: dueAmt,
-      inWords: numberToWords(dueAmt),
-      isPaid: dueAmt <= 0,
+      netPayable: paidAmt - refundedAmt,
+      advance: paidAmt,
+      due: 0,
+      inWords: numberToWords(paidAmt - refundedAmt),
+      isPaid: true,
       paymentLog: [
         {
           paymentType: feeLabel,
@@ -1129,11 +1179,11 @@ try {
     try {
       const { error } = await supabase
         .from('appointments')
-        .update({ fee_type: editFeeType, advance: editAdvance })
+        .update({ paid: editPaid, refunded: editRefunded })
         .eq('id', editInvoiceApt.id);
       if (error) throw error;
 
-      const updatedApt = { ...editInvoiceApt, fee_type: editFeeType, advance: editAdvance };
+      const updatedApt = { ...editInvoiceApt, paid: editPaid, refunded: editRefunded };
       setAppointments(prev => prev.map(a => a.id === updatedApt.id ? updatedApt : a));
 
       setShowInvoiceEditModal(false);
@@ -1219,6 +1269,19 @@ try {
               </select>
             </div>
 
+            <div className="min-w-[140px]">
+              <label className="text-sm font-medium text-slate-600 mb-2 block">পরিশোধ</label>
+              <select
+                value={filterUnpaid}
+                onChange={(e) => setFilterUnpaid(e.target.value)}
+                className="input"
+              >
+                <option value="">সব</option>
+                <option value="yes">বাকি (পরিশোধ করেনি)</option>
+                <option value="no">পরিশোধ করেছে</option>
+              </select>
+            </div>
+
             <div className="flex-1 min-w-[150px] sm:min-w-[200px]">
               <label className="text-sm font-medium text-slate-600 mb-2 block">খুঁজুন</label>
               <div className="relative">
@@ -1263,6 +1326,9 @@ try {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">ফেরত</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">নেট</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-600">সম্পন্ন</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600"></th>
                 </tr>
@@ -1319,6 +1385,9 @@ try {
                       <td className="px-4 py-3">
                         {getStatusBadge(apt.status, apt.displayStatus)}
                       </td>
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>
+                      <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
+                      <td className="px-4 py-3 text-right font-medium text-slate-900">৳{(apt.paid || 0) - (apt.refunded || 0)}</td>
                       <td className="px-4 py-3 text-center">
                         {apt.status !== 'completed' && apt.status !== 'cancelled' ? (
                           <button
@@ -1365,53 +1434,60 @@ try {
                                    <Clock className="w-4 h-4" />
                                  </button>
                                )}
-                               {apt.status === 'cancelled' && (
+                                {apt.status === 'cancelled' && (
+                                  <button
+                                    onClick={() => handleApprove(apt, apt.status)}
+                                    className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                    title="পুনরুদ্ধার করুন"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                )}
                                  <button
-                                   onClick={() => handleApprove(apt, apt.status)}
-                                   className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                   title="পুনরুদ্ধার করুন"
+                                   onClick={() => handlePrescribe(apt)}
+                                   className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                   title="প্রেসক্রিব"
                                  >
-                                   <Check className="w-4 h-4" />
-                                 </button>
-                               )}
-                                <button
-                                  onClick={() => handlePrescribe(apt)}
-                                  className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="প্রেসক্রিব"
-                                >
-                                  <FileText className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleVitals(apt)}
-                                  className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="ভাইটালস"
-                                >
-                                  <Heart className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleHistory(apt)}
-                                  className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
-                                  title="ইতিহাস"
-                                >
-                                  <FileText className="w-4 h-4" />
+                                   <FileText className="w-4 h-4" />
                                  </button>
                                  <button
-                                   onClick={() => handlePrintSlipFromTable(apt)}
-                                   className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
-                                   title="স্লিপ প্রিন্ট"
+                                   onClick={() => handleVitals(apt)}
+                                   className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                   title="ভাইটালস"
                                  >
-                                   <Printer className="w-4 h-4" />
+                                   <Heart className="w-4 h-4" />
                                  </button>
                                  <button
-                                   onClick={() => { setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.advance || 0); setShowInvoiceEditModal(true); }}
-                                   className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                   title="ইনভয়েস"
+                                   onClick={() => handleEditPatient(apt)}
+                                   className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                                   title="রোগীর তথ্য সম্পাদনা"
                                  >
-                                   <Receipt className="w-4 h-4" />
+                                   <Pencil className="w-4 h-4" />
                                  </button>
-                               </>
-                             )}
-                             {apt.status === 'completed' && (
+                                 <button
+                                   onClick={() => handleHistory(apt)}
+                                   className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                                   title="ইতিহাস"
+                                 >
+                                   <FileText className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handlePrintSlipFromTable(apt)}
+                                    className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
+                                    title="স্লিপ প্রিন্ট"
+                                  >
+                                    <Printer className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
+                                    className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                    title="ইনভয়েস"
+                                  >
+                                    <Receipt className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                              {apt.status === 'completed' && (
                                <div className="flex items-center justify-end gap-1">
                                  <button
                                    onClick={() => handlePrescribe(apt)}
@@ -1427,8 +1503,15 @@ try {
                                  >
                                    <Heart className="w-4 h-4" />
                                  </button>
-                                <button
-                                  onClick={() => handleHistory(apt)}
+                                 <button
+                                   onClick={() => handleEditPatient(apt)}
+                                   className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                                   title="রোগীর তথ্য সম্পাদনা"
+                                 >
+                                   <Pencil className="w-4 h-4" />
+                                 </button>
+                                 <button
+                                   onClick={() => handleHistory(apt)}
                                   className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
                                   title="ইতিহাস"
                                 >
@@ -1442,7 +1525,7 @@ try {
                                   <Printer className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => { setEditInvoiceApt(apt); setEditFeeType(apt.fee_type || 'new'); setEditAdvance(apt.advance || 0); setShowInvoiceEditModal(true); }}
+                                  onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
                                   className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
                                   title="ইনভয়েস"
                                 >
@@ -1469,42 +1552,32 @@ try {
               <p className="font-semibold">{editInvoiceApt.doctors?.name || editInvoiceApt.doctorName || ''}</p>
             </div>
 
-            <div>
-              <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
-              <div className="grid grid-cols-3 gap-2">
-                {FEE_TYPES.map((ft) => (
-                  <button key={ft.value} type="button" onClick={() => { setEditFeeType(ft.value); if (editAdvance > getFeeAmount(ft.value)) setEditAdvance(getFeeAmount(ft.value)); }}
-                    className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${editFeeType === ft.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-slate-300'}`}>
-                    <div className="font-semibold">{ft.label}</div>
-                    <div className="text-xs mt-0.5 opacity-75">৳{ft.amount}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
-                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editFeeType)}</div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">অগ্রিম টাকা (Advance)</label>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
                 <input
                   type="number"
                   min={0}
-                  max={getFeeAmount(editFeeType)}
-                  value={editAdvance || ''}
+                  value={editPaid || ''}
                   placeholder="০"
-                  onChange={(e) => {
-                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editFeeType));
-                    setEditAdvance(val);
-                  }}
+                  onChange={(e) => setEditPaid(parseInt(e.target.value) || 0)}
+                  className="input w-full text-center font-semibold"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">ফেরত (Refunded)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editRefunded || ''}
+                  placeholder="০"
+                  onChange={(e) => setEditRefunded(parseInt(e.target.value) || 0)}
                   className="input w-full text-center font-semibold"
                 />
               </div>
               <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
-                <span className="text-slate-500">বাকি (Due):</span>
-                <span className="font-bold text-primary-600">৳{getFeeAmount(editFeeType) - editAdvance}</span>
+                <span className="text-slate-500">নেট (Net):</span>
+                <span className="font-bold text-primary-600">৳{(editPaid || 0) - (editRefunded || 0)}</span>
               </div>
             </div>
 
@@ -1572,9 +1645,10 @@ try {
                    <option value="">লিঙ্গ নির্বাচন করুন</option>
                    <option value="male">পুরুষ</option>
                    <option value="female">মহিলা</option>
-                   <option value="other">অন্যান্য</option>
-                 </select>
-               </div>
+                  <option value="other">অন্যান্য</option>
+               </select>
+             </div>
+
              </div>
 
           <div>
@@ -2058,6 +2132,44 @@ try {
         initialVitals={vitalsAppointment ? (vitalsData[vitalsAppointment.id] || vitalsAppointment.vitals) : undefined}
         patientName={vitalsAppointment?.patients?.name}
       />
+
+      <Modal isOpen={showEditPatientModal} onClose={() => { setShowEditPatientModal(false); setEditPatientApt(null); }} title="রোগীর তথ্য সম্পাদনা" size="md">
+        {editPatientApt && (
+          <div className="space-y-5">
+            <div className="p-4 bg-sky-50 rounded-xl border border-sky-200">
+              <p className="text-sm text-slate-500 mb-1">রোগী</p>
+              <p className="font-semibold">{editPatientApt.patients?.name || editPatientApt.patientName || ''}</p>
+              {editPatientApt.patients?.bcode && <p className="text-xs text-sky-600 mt-1">BCode: {editPatientApt.patients.bcode}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">নাম</label>
+              <input type="text" value={editPatientForm.name} onChange={(e) => setEditPatientForm({...editPatientForm, name: e.target.value})} className="input w-full" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">ফোন</label>
+              <input type="tel" value={editPatientForm.phone} onChange={(e) => setEditPatientForm({...editPatientForm, phone: e.target.value})} className="input w-full" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-2 block">বয়স</label>
+                <input type="number" value={editPatientForm.age} onChange={(e) => setEditPatientForm({...editPatientForm, age: e.target.value})} className="input w-full" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-2 block">লিঙ্গ</label>
+                <select value={editPatientForm.sex} onChange={(e) => setEditPatientForm({...editPatientForm, sex: e.target.value})} className="input w-full">
+                  <option value="male">পুরুষ</option>
+                  <option value="female">মহিলা</option>
+                  <option value="other">অন্যান্য</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" onClick={() => { setShowEditPatientModal(false); setEditPatientApt(null); }}>বাতিল</Button>
+              <Button onClick={handleSavePatientDetails} loading={savingPatient}>সংরক্ষণ</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </DashboardLayout>
   );
 }
