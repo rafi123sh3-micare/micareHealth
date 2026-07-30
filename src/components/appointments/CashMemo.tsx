@@ -18,6 +18,7 @@ interface CashMemoData {
   subTotal: number;
   netPayable: number;
   advance: number;
+  refund: number;
   due: number;
   inWords: string;
   isPaid: boolean;
@@ -36,9 +37,9 @@ export function generateCashMemoPrint(data: CashMemoData) {
 
   const fmtAmt = (n: number) => n.toFixed(2);
 
-  const paidBadge = data.isPaid
+  const statusBadge = data.isPaid
     ? `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(22,163,74,0.12);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(22,163,74,0.20);padding:6px 4px;border-radius:4px;">PAID</div>`
-    : '';
+    : `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(220,38,38,0.12);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(220,38,38,0.20);padding:6px 4px;border-radius:4px;">DUE</div>`;
 
   const logRows = data.paymentLog
     .map(
@@ -360,12 +361,13 @@ export function generateCashMemoPrint(data: CashMemoData) {
     <!-- TOTALS + PAID STAMP -->
     <div class="totals-area">
       <div class="totals-left">
-        ${paidBadge}
+        ${statusBadge}
         <div class="in-words"><strong>In Word:</strong> ${data.inWords}</div>
       </div>
       <div class="totals-right">
         <div class="total-row"><span class="total-label">Sub Total Tk.</span><span class="total-amount">${fmtAmt(data.subTotal)}</span></div>
         <div class="total-row net"><span class="total-label">Net Payable Tk.</span><span class="total-amount">${fmtAmt(data.netPayable)}</span></div>
+        <div class="total-row"><span class="total-label">Refund Tk.</span><span class="total-amount" style="color:#dc2626;">${fmtAmt(data.refund)}</span></div>
         <div class="total-row ${data.advance > 0 ? '' : ''}"><span class="total-label">Advance Tk.</span><span class="total-amount">${fmtAmt(data.advance)}</span></div>
         <div class="total-row due"><span class="total-label">Due Tk.</span><span class="total-amount">${fmtAmt(data.due)}</span></div>
       </div>

@@ -22,7 +22,13 @@ const FEE_TYPE_PREFIX: Record<string, string> = {
   report: 'R',
 };
 
-export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string): Promise<string> {
+function getLast4PhoneDigits(phone?: string): string {
+  if (!phone) return '';
+  const cleaned = phone.replace(/\D/g, '');
+  return cleaned.slice(-4);
+}
+
+export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string): Promise<string> {
   const [doctorResult, countResult] = await Promise.all([
     supabase.from('doctors').select('doctor_code').eq('id', doctorId).single(),
     supabase.from('appointments').select('id').eq('doctor_id', doctorId).eq('date', date).in('status', ['confirmed', 'completed'])
@@ -32,8 +38,9 @@ export async function generateSerialNumber(doctorId: string, date: string, type:
   const typeSuffix = type === 'teleconsult' ? 'T' : 'A';
   const feePrefix = FEE_TYPE_PREFIX[feeType || ''] || '';
   const count = countResult.data?.length || 0;
+  const phoneSuffix = getLast4PhoneDigits(phone);
 
-  return `${doctorCode}-${String(count + 1).padStart(3, '0')}${typeSuffix}${feePrefix}`;
+  return `${doctorCode}-${String(count + 1).padStart(3, '0')}${typeSuffix}${feePrefix}${phoneSuffix}`;
 }
 
 export const FEE_TYPES = [

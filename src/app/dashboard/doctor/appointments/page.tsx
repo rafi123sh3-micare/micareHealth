@@ -408,7 +408,8 @@ const statusOrder: Record<string, number> = {
         apt.doctor_id,
         apt.date,
         apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
-        apt.fee_type
+        apt.fee_type,
+        apt.patients?.phone
       );
       updateData.serial_number = serialNumber;
     }
@@ -570,7 +571,8 @@ const statusOrder: Record<string, number> = {
         apt.doctor_id,
         apt.date,
         apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
-        apt.fee_type
+        apt.fee_type,
+        apt.patients?.phone
       );
       updateData.serial_number = serialNumber;
     }
@@ -653,7 +655,7 @@ const statusOrder: Record<string, number> = {
           password: 'walkin_temp', age: walkinPatient.age, sex: walkinPatient.sex || 'male',
           compliant: walkinPatient.compliant || 'false',
         }).select('id').single(),
-        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type)
+        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone)
       ]);
 
       const newPatient = patientResult.data;
@@ -1019,11 +1021,12 @@ const statusOrder: Record<string, number> = {
         { name: `${feeLabel} Fee (${apt.doctors?.name || apt.doctorName || 'Doctor'})`, amount: feeAmt },
       ],
       subTotal: feeAmt,
-      netPayable: paidAmt - refundedAmt,
+      netPayable: feeAmt - refundedAmt,
       advance: paidAmt,
-      due: 0,
-      inWords: numberToWords(paidAmt - refundedAmt),
-      isPaid: true,
+      refund: refundedAmt,
+      due: (feeAmt - refundedAmt) - paidAmt,
+      inWords: numberToWords(feeAmt - refundedAmt),
+      isPaid: (feeAmt - (paidAmt - refundedAmt)) <= 0,
       paymentLog: [
         {
           paymentType: feeLabel,
@@ -1143,8 +1146,8 @@ const statusOrder: Record<string, number> = {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">ফেরত</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Refund</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Due</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">নেট</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-600">সম্পন্ন</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600"></th>
@@ -1188,9 +1191,9 @@ const statusOrder: Record<string, number> = {
                         </span>
                       </td>
                       <td className="px-4 py-3">{getStatusBadge(apt.status, apt.displayStatus)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>
-                      <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
-                      <td className="px-4 py-3 text-right font-medium text-slate-900">৳{(apt.paid || 0) - (apt.refunded || 0)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
+                       <td className="px-4 py-3 text-right font-medium text-amber-600">৳{(apt.paid || 0) - (apt.refunded || 0)}</td>
+                       <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
                       <td className="px-4 py-3 text-center">
                         {apt.status !== 'completed' && apt.status !== 'cancelled' ? (
                           <button onClick={() => handleComplete(apt)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="সম্পন্ন করুন">
@@ -1264,7 +1267,7 @@ const statusOrder: Record<string, number> = {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">ফেরত (Refunded)</label>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Refund</label>
                 <input
                   type="number"
                   min={0}
@@ -1276,7 +1279,7 @@ const statusOrder: Record<string, number> = {
               </div>
               <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
                 <span className="text-slate-500">নেট (Net):</span>
-                <span className="font-bold text-primary-600">৳{(editPaid || 0) - (editRefunded || 0)}</span>
+                <span className="font-bold text-primary-600">৳{getFeeAmount(editInvoiceApt.fee_type) - (editRefunded || 0)}</span>
               </div>
             </div>
 

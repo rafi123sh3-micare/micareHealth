@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { TrendingUp, Users, Calendar, Video, Wallet, Plus, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { TrendingUp, Users, Calendar, Video, Wallet, Plus, X, Download } from 'lucide-react';
+import { supabase, FEE_TYPES, getFeeAmount } from '@/lib/supabase';
+import { generateReportPDF } from '@/lib/excel-export';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -91,7 +92,7 @@ export default function AdminReports() {
     setLoading(true);
     
     const [aptsResult, doctorsResult, moneyResult] = await Promise.all([
-      supabase.from('appointments').select('*, doctors(id, name, consultation_fee), patients(id)').order('date', { ascending: false }),
+      supabase.from('appointments').select('*, doctors(id, name, consultation_fee, specialization), patients(name, phone, age, sex)').order('date', { ascending: false }),
       supabase.from('doctors').select('id, name, consultation_fee').order('name'),
       supabase.from('transactions').select('amount, date').eq('type', 'added')
     ]);
@@ -101,6 +102,51 @@ export default function AdminReports() {
     if (moneyResult.data) setAddedMoneyData(moneyResult.data);
     
     setLoading(false);
+  }
+
+  function handleExportPDF() {
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+
+    // Filter appointments based on current view
+    const [year, month] = filterMonth.split('-').map(Number);
+    const lastDay = new Date(year, month, 0);
+    const firstDayStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+
+    const filtered = statsViewMode === 'daily'
+      ? allApts.filter((a: any) => a.date === filterDate)
+      : allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
+
+    generateReportPDF({
+      title: `Micare Health - ${statsViewMode === 'daily' ? 'Daily' : 'Monthly'} Report`,
+      date: statsViewMode === 'daily' ? filterDate : `${filterMonth}`,
+      appointments: filtered.map((apt: any) => {
+        const serialSuffix = apt.serial_number?.slice(-1) || '';
+        const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
+        const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find((f: any) => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
+
+        return {
+          serial: apt.serial_number || '-',
+          patientName: apt.patients?.name || apt.patientName || '-',
+          phone: apt.patients?.phone || '-',
+          age: apt.patients?.age || apt.age || '-',
+          gender: apt.patients?.sex === 'male' ? 'Male' : apt.patients?.sex === 'female' ? 'Female' : apt.patients?.sex || '-',
+          doctor: apt.doctors?.name || apt.doctorName || '-',
+          department: apt.doctors?.specialization || 'General',
+          type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
+          status: apt.status === 'confirmed' ? 'Confirmed' : apt.status === 'completed' ? 'Completed' : apt.status === 'pending' ? 'Pending' : apt.status === 'cancelled' ? 'Cancelled' : apt.status || '-',
+          time: apt.time || '-',
+          date: apt.date || '-',
+          feeType: feeTypeLabel,
+          advance: apt.advance || 0,
+          paid: apt.paid || 0,
+          refunded: apt.refunded || 0,
+          netPayble: getFeeAmount(apt.fee_type) - (apt.refunded || 0),
+          due: (getFeeAmount(apt.fee_type) - (apt.refunded || 0)) - (apt.paid || 0),
+        };
+      }),
+    });
   }
 
   function calculateStats() {
@@ -124,7 +170,7 @@ export default function AdminReports() {
     const monthPatients = new Set(monthAll.map((a: any) => a.patient_id)).size;
 
     // Earnings — sum net (paid - refunded) from all appointments, regardless of status
-    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + ((Number(a.paid) || 0) - (Number(a.refunded) || 0)), 0);
+    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.paid) || 0), 0);
 
     const todayAllForEarnings = allApts.filter((a: any) => a.date === filterDate);
     const monthAllForEarnings = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
@@ -247,6 +293,14 @@ export default function AdminReports() {
               className="px-4 py-2 text-white rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-600 transition shadow-md text-sm font-medium"
             >
               Today
+            </button>
+
+            <button
+              onClick={handleExportPDF}
+              className="px-4 py-2 text-white rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 transition shadow-md text-sm font-medium flex items-center gap-1.5"
+              title="PDF ডাউনলোড"
+            >
+              <Download className="w-4 h-4" /> PDF
             </button>
             
             <div className="flex bg-slate-100 rounded-lg p-1">

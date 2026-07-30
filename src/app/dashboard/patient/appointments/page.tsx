@@ -287,6 +287,7 @@ const statusOrder: Record<string, number> = {
       subTotal: feeAmt,
       netPayable: feeAmt,
       advance: advancePaid,
+      refund: 0,
       due: dueAmt,
       inWords: numberToWords(dueAmt),
       isPaid: dueAmt <= 0,
