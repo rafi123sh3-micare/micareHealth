@@ -368,7 +368,7 @@ export function generateCashMemoPrint(data: CashMemoData) {
         <div class="total-row"><span class="total-label">Sub Total Tk.</span><span class="total-amount">${fmtAmt(data.subTotal)}</span></div>
         <div class="total-row net"><span class="total-label">Net Payable Tk.</span><span class="total-amount">${fmtAmt(data.netPayable)}</span></div>
         <div class="total-row"><span class="total-label">Refund Tk.</span><span class="total-amount" style="color:#dc2626;">${fmtAmt(data.refund)}</span></div>
-        <div class="total-row ${data.advance > 0 ? '' : ''}"><span class="total-label">Advance Tk.</span><span class="total-amount">${fmtAmt(data.advance)}</span></div>
+        <div class="total-row ${data.advance > 0 ? '' : ''}"><span class="total-label">Paid Amount</span><span class="total-amount">${fmtAmt(data.advance)}</span></div>
         <div class="total-row due"><span class="total-label">Due Tk.</span><span class="total-amount">${fmtAmt(data.due)}</span></div>
       </div>
     </div>

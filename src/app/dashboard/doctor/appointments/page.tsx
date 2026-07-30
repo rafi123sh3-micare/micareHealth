@@ -667,6 +667,7 @@ const statusOrder: Record<string, number> = {
         reason: walkinPatient.reason || null, serial_number: serialNumber,
         patient_mobile: walkinPatient.phone || '', fee_type: walkinPatient.fee_type,
         advance: walkinPatient.advance,
+        paid: walkinPatient.advance,
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
 
@@ -1327,8 +1328,7 @@ const statusOrder: Record<string, number> = {
               <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
               <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(walkinPatient.fee_type)}</div>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">অগ্রিম টাকা (Advance)</label>
+            <div>               <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
               <input
                 type="number"
                 min={0}

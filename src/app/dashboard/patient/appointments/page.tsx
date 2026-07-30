@@ -309,7 +309,7 @@ const statusOrder: Record<string, number> = {
     try {
       const { error } = await supabase
         .from('appointments')
-        .update({ fee_type: editFeeType, advance: editAdvance })
+        .update({ fee_type: editFeeType, advance: editAdvance, paid: editAdvance })
         .eq('id', editInvoiceApt.id);
       if (error) throw error;
 
@@ -631,7 +631,7 @@ const statusOrder: Record<string, number> = {
                    <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editFeeType)}</div>
                  </div>
                  <div>
-                   <label className="text-xs font-medium text-slate-500 mb-1 block">অগ্রিম টাকা (Advance)</label>
+                   <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
                    <input
                      type="number"
                      min={0}
