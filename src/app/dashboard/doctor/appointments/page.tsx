@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Zap, Printer, Scan, Receipt, Download, Heart, Pencil } from 'lucide-react';
+import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Zap, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
@@ -153,6 +153,20 @@ export default function DoctorAppointments() {
   const [showVitalsModal, setShowVitalsModal] = useState(false);
   const [vitalsAppointment, setVitalsAppointment] = useState<any>(null);
   const [vitalsData, setVitalsData] = useState<Record<string, VitalsData>>({});
+
+  // SMS modal state
+  const [showSMSModal, setShowSMSModal] = useState(false);
+  const [smsAppointment, setSmsAppointment] = useState<any>(null);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [sendingSMS, setSendingSMS] = useState(false);
+
+  // Receptionist name (saved locally)
+  const [receptionistName, setReceptionistName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('receptionist_name') || '';
+    }
+    return '';
+  });
 
   useEffect(() => {
     loadAppointments();
@@ -384,7 +398,11 @@ const statusOrder: Record<string, number> = {
           time: apt.time || '-',
           date: apt.date || '-',
           feeType: feeTypeLabel,
-          advance: apt.advance || 0,
+          paid: apt.paid || 0,
+          refunded: apt.refunded || 0,
+          net: (apt.paid || 0) - (apt.refunded || 0),
+          bookedBy: apt.booked_by || '-',
+          createdAt: apt.created_at || '',
         };
       }),
     });
@@ -668,8 +686,11 @@ const statusOrder: Record<string, number> = {
         patient_mobile: walkinPatient.phone || '', fee_type: walkinPatient.fee_type,
         advance: walkinPatient.advance,
         paid: walkinPatient.advance,
+        booked_by: receptionistName,
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
+
+      try { localStorage.setItem('receptionist_name', receptionistName); } catch (e) {}
 
       const [scheduleResult] = await Promise.all([
         supabase.from('schedules')
@@ -740,6 +761,31 @@ const statusOrder: Record<string, number> = {
       else if (status === 'confirmed') return <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">নিশ্চিত</span>;
     }
     return <StatusPill status={displayStatus as any} />;
+  };
+
+  const getDue = (apt: any) => Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0));
+
+  const handleOpenSMS = (apt: any) => {
+    setSmsAppointment(apt);
+    setSmsMessage(buildConfirmationSMS(
+      apt.doctors?.name || apt.doctorName || '',
+      apt.date,
+      apt.scheduleStart || apt.time || '',
+      apt.serial_number || ''
+    ));
+    setShowSMSModal(true);
+  };
+
+  const handleSendSMS = async () => {
+    if (!smsAppointment) return;
+    const phone = smsAppointment.patients?.phone || smsAppointment.patientPhone || '';
+    if (!phone) { toast.error('রোগীর ফোন নম্বর নেই'); return; }
+    if (!smsMessage.trim()) { toast.error('মেসেজ লিখুন'); return; }
+    setSendingSMS(true);
+    await sendSMS(phone, smsMessage);
+    setSendingSMS(false);
+    setShowSMSModal(false);
+    setSmsAppointment(null);
   };
 
   const handlePrescribe = async (apt: any) => {
@@ -1146,6 +1192,7 @@ const statusOrder: Record<string, number> = {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">বুক করেছে</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Refund</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Due</th>
@@ -1191,6 +1238,9 @@ const statusOrder: Record<string, number> = {
                           {apt.type === 'teleconsult' ? 'ভিডিও' : 'সরাসরি'}
                         </span>
                       </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-slate-600">{apt.booked_by || '-'}</span>
+                      </td>
                       <td className="px-4 py-3">{getStatusBadge(apt.status, apt.displayStatus)}</td>
                       <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
                        <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
@@ -1220,8 +1270,9 @@ const statusOrder: Record<string, number> = {
                               {apt.status === 'cancelled' && (
                                 <button onClick={() => handleApprove(apt, apt.status)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="পুনরুদ্ধার করুন"><Check className="w-4 h-4" /></button>
                               )}
-                              <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>
+                              {getDue(apt) <= 0 && <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>}
                               <button onClick={() => handleVitals(apt)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="ভাইটালস"><Heart className="w-4 h-4" /></button>
+                              <button onClick={() => handleOpenSMS(apt)} className="p-2 text-sky-500 hover:bg-sky-50 rounded-lg transition-colors" title="SMS পাঠান"><MessageCircle className="w-4 h-4" /></button>
                               <button onClick={() => handleHistory(apt)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="ইতিহাস"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handlePrintSlipFromTable(apt)} className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors" title="স্লিপ প্রিন্ট"><Printer className="w-4 h-4" /></button>
                               <button onClick={() => handleEditPatient(apt)} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="রোগীর তথ্য সম্পাদনা"><Pencil className="w-4 h-4" /></button>
@@ -1230,8 +1281,9 @@ const statusOrder: Record<string, number> = {
                           )}
                           {apt.status === 'completed' && (
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>
+                              {getDue(apt) <= 0 && <button onClick={() => handlePrescribe(apt)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="প্রেসক্রিব"><FileText className="w-4 h-4" /></button>}
                               <button onClick={() => handleVitals(apt)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="ভাইটালস"><Heart className="w-4 h-4" /></button>
+                              <button onClick={() => handleOpenSMS(apt)} className="p-2 text-sky-500 hover:bg-sky-50 rounded-lg transition-colors" title="SMS পাঠান"><MessageCircle className="w-4 h-4" /></button>
                               <button onClick={() => handleEditPatient(apt)} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="রোগীর তথ্য সম্পাদনা"><Pencil className="w-4 h-4" /></button>
                               <button onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
                             </div>
@@ -1299,6 +1351,7 @@ const statusOrder: Record<string, number> = {
       <Modal isOpen={showWalkinModal} onClose={() => setShowWalkinModal(false)} title="নতুন অ্যাপয়েন্টমেন্ট">
         <div className="space-y-5">
           <div><label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর নাম *</label><input type="text" value={walkinPatient.name} onChange={(e) => setWalkinPatient({...walkinPatient, name: e.target.value})} className="input w-full" placeholder="রোগীর নাম লিখুন" /></div>
+          <div><label className="text-sm font-medium text-slate-600 mb-2 block">রিসেপশনিস্টের নাম</label><input type="text" value={receptionistName} onChange={(e) => setReceptionistName(e.target.value)} className="input w-full" placeholder="রিসেপশনিস্টের নাম লিখুন" /></div>
           <div><label className="text-sm font-medium text-slate-600 mb-2 block">ফোন নম্বর</label><input type="tel" value={walkinPatient.phone} onChange={(e) => setWalkinPatient({...walkinPatient, phone: e.target.value})} className="input w-full" placeholder="01XXXXXXXXX" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-sm font-medium text-slate-600 mb-2 block">বয়স *</label><input type="number" value={walkinPatient.age || ''} onChange={(e) => setWalkinPatient({...walkinPatient, age: parseInt(e.target.value) || 0})} className="input w-full" placeholder="বয়স" /></div>
@@ -1469,6 +1522,31 @@ const statusOrder: Record<string, number> = {
             <div className="flex gap-3 pt-2">
               <Button variant="secondary" onClick={() => { setShowEditPatientModal(false); setEditPatientApt(null); }}>বাতিল</Button>
               <Button onClick={handleSavePatientDetails} loading={savingPatient}>সংরক্ষণ</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={showSMSModal} onClose={() => { setShowSMSModal(false); setSmsAppointment(null); }} title="SMS পাঠান">
+        {smsAppointment && (
+          <div className="space-y-5">
+            <div className="p-4 bg-sky-50 rounded-xl border border-sky-200">
+              <p className="text-sm text-slate-500 mb-1">রোগী</p>
+              <p className="font-semibold">{smsAppointment.patients?.name || smsAppointment.patientName || ''}</p>
+              <p className="text-xs text-sky-600 mt-1">{smsAppointment.patients?.phone || smsAppointment.patientPhone || 'ফোন নম্বর নেই'}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">মেসেজ</label>
+              <textarea
+                value={smsMessage}
+                onChange={(e) => setSmsMessage(e.target.value)}
+                rows={6}
+                className="input w-full resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => { setShowSMSModal(false); setSmsAppointment(null); }} className="flex-1">বাতিল</Button>
+              <Button onClick={handleSendSMS} loading={sendingSMS} className="flex-1 !bg-sky-500 hover:!bg-sky-600">পাঠান</Button>
             </div>
           </div>
         )}

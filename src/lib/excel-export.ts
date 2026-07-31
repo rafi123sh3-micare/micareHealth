@@ -17,7 +17,11 @@ interface PDFExportData {
     time: string;
     date: string;
     feeType: string;
-    advance: number;
+    paid: number;
+    refunded: number;
+    net: number;
+    bookedBy: string;
+    createdAt: string;
   }[];
 }
 
@@ -61,6 +65,18 @@ function toBase64(url: string): Promise<string | null> {
 
 let headerLogoCache: string | null = null;
 let watermarkLogoCache: string | null = null;
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
 
 function loadLogos(): Promise<{ header: string | null; watermark: string | null }> {
   if (headerLogoCache && watermarkLogoCache) return Promise.resolve({ header: headerLogoCache, watermark: watermarkLogoCache });
@@ -248,40 +264,65 @@ export function generateAppointmentPDF(data: PDFExportData) {
     doc.text(`Date: ${data.date}`, 14, headerEnd + 10);
     doc.text(`Total: ${data.appointments.length}`, pageWidth - 14, headerEnd + 10, { align: 'right' });
 
+    const totalPaid = data.appointments.reduce((s, a) => s + (a.paid || 0), 0);
+    const totalRefunded = data.appointments.reduce((s, a) => s + (a.refunded || 0), 0);
+    const totalNet = data.appointments.reduce((s, a) => s + ((a.net ?? (a.paid || 0) - (a.refunded || 0))), 0);
+
     const tableStartY = headerEnd + 14;
 
-    const headers = [['#', 'Serial', 'Patient', 'Phone', 'Age', 'Sex', 'Doctor', 'Department', 'Type', 'Status', 'Time', 'Date', 'Fee Type', 'Advance']];
+    const headers = [['#', 'Serial', 'Patient', 'Phone', 'Doctor', 'Department', 'Type', 'Status', 'Booked By', 'Created', 'Time', 'Fee Type', 'Paid', 'Refund', 'Net']];
 
     const rows = data.appointments.map((apt, idx) => [
       idx + 1,
       apt.serial || '-',
       apt.patientName,
       apt.phone || '-',
-      apt.age || '-',
-      apt.gender || '-',
       apt.doctor || '-',
       apt.department || '-',
       apt.type || '-',
       apt.status || '-',
+      apt.bookedBy || '-',
+      formatDateTime(apt.createdAt),
       apt.time || '-',
-      apt.date || '-',
       apt.feeType || '-',
-      apt.advance || 0,
+      apt.paid || 0,
+      apt.refunded || 0,
+      (apt.net ?? (apt.paid || 0) - (apt.refunded || 0)),
     ]);
+
+    const totalRow: any[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+    totalRow[11] = { content: 'GRAND TOTAL', styles: { fontStyle: 'bold', fillColor: [13, 93, 158], textColor: [255, 255, 255] } };
+    totalRow[12] = { content: `Tk. ${totalPaid.toLocaleString()}`, styles: { fontStyle: 'bold', fillColor: [230, 245, 255] } };
+    totalRow[13] = { content: `Tk. ${totalRefunded.toLocaleString()}`, styles: { fontStyle: 'bold', fillColor: [255, 235, 235], textColor: [190, 30, 30] } };
+    totalRow[14] = { content: `Tk. ${totalNet.toLocaleString()}`, styles: { fontStyle: 'bold', fillColor: [255, 235, 235], textColor: [190, 30, 30] } };
+    rows.push(totalRow);
 
     autoTable(doc, {
       startY: tableStartY,
       head: headers,
       body: rows,
-      styles: { fontSize: 7.5, cellPadding: 2, overflow: 'ellipsize' },
+      styles: { fontSize: 7, cellPadding: 1.5, overflow: 'ellipsize' },
       headStyles: { fillColor: PRIMARY, textColor: [255, 255, 255], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [235, 245, 255] },
       columnStyles: {
-        0: { cellWidth: 10 },
-        7: { cellWidth: 25 },
+        0: { cellWidth: 6 },
+        1: { cellWidth: 18 },
+        2: { cellWidth: 24 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 26 },
+        5: { cellWidth: 18 },
+        6: { cellWidth: 13 },
+        7: { cellWidth: 13 },
+        8: { cellWidth: 18 },
+        9: { cellWidth: 22 },
+        10: { cellWidth: 12 },
+        11: { cellWidth: 26 },
+        12: { cellWidth: 18 },
         13: { cellWidth: 18 },
+        14: { cellWidth: 18 },
       },
       margin: { left: 10, right: 10 },
+      showFoot: 'lastPage',
     });
 
     if (watermark) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, CheckCircle, Plus, Zap, FileText, Upload, Printer, Scan, Receipt, Download, Heart, Pencil } from 'lucide-react';
+import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, CheckCircle, Plus, Zap, FileText, Upload, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
@@ -177,6 +177,20 @@ export default function AdminAppointments() {
   const [historyStep, setHistoryStep] = useState(0);
   const [vitalData, setVitalData] = useState({ pulse: '', bp_systolic: '', bp_diastolic: '', weight: '', height_ft: '', height_in: '', bmi: '', spo2: '', temp: '' });
   const [vitalLoading, setVitalLoading] = useState(false);
+
+  // SMS modal state
+  const [showSMSModal, setShowSMSModal] = useState(false);
+  const [smsAppointment, setSmsAppointment] = useState<any>(null);
+  const [smsMessage, setSmsMessage] = useState('');
+  const [sendingSMS, setSendingSMS] = useState(false);
+
+  // Receptionist name (saved locally)
+  const [receptionistName, setReceptionistName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('receptionist_name') || '';
+    }
+    return '';
+  });
 
   useEffect(() => {
     loadData();
@@ -452,7 +466,11 @@ export default function AdminAppointments() {
           time: apt.time || '-',
           date: apt.date || '-',
           feeType: feeTypeLabel,
-          advance: apt.advance || 0,
+          paid: apt.paid || 0,
+          refunded: apt.refunded || 0,
+          net: (apt.paid || 0) - (apt.refunded || 0),
+          bookedBy: apt.booked_by || '-',
+          createdAt: apt.created_at || '',
         };
       }),
     });
@@ -743,6 +761,7 @@ try {
         fee_type: walkinPatient.fee_type,
         advance: walkinPatient.advance,
         paid: walkinPatient.advance,
+        booked_by: receptionistName,
       });
 
       if (aptError) {
@@ -750,6 +769,8 @@ try {
         setCreatingWalkin(false);
         return;
       }
+
+      try { localStorage.setItem('receptionist_name', receptionistName); } catch (e) {}
 
       const walkinDoctor = doctors.find(d => d.id === walkinPatient.doctor_id);
 
@@ -920,6 +941,31 @@ try {
     } finally {
       setSavingPatient(false);
     }
+  };
+
+  const getDue = (apt: any) => Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0));
+
+  const handleOpenSMS = (apt: any) => {
+    setSmsAppointment(apt);
+    setSmsMessage(buildConfirmationSMS(
+      apt.doctors?.name || apt.doctorName || '',
+      apt.date,
+      apt.scheduleStart || apt.time || '',
+      apt.serial_number || ''
+    ));
+    setShowSMSModal(true);
+  };
+
+  const handleSendSMS = async () => {
+    if (!smsAppointment) return;
+    const phone = smsAppointment.patients?.phone || smsAppointment.patientPhone || '';
+    if (!phone) { toast.error('রোগীর ফোন নম্বর নেই'); return; }
+    if (!smsMessage.trim()) { toast.error('মেসেজ লিখুন'); return; }
+    setSendingSMS(true);
+    await sendSMS(phone, smsMessage);
+    setSendingSMS(false);
+    setShowSMSModal(false);
+    setSmsAppointment(null);
   };
 
   const handleHistory = async (apt: any) => {
@@ -1328,6 +1374,7 @@ try {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">বুক করেছে</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Refund</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Due</th>
@@ -1384,6 +1431,9 @@ try {
                           {apt.type === 'teleconsult' && <Video className="w-3 h-3" />}
                           {apt.type === 'teleconsult' ? 'ভিডিও' : 'সরাসরি'}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs text-slate-600">{apt.booked_by || '-'}</span>
                       </td>
                       <td className="px-4 py-3">
                         {getStatusBadge(apt.status, apt.displayStatus)}
@@ -1446,6 +1496,7 @@ try {
                                     <Check className="w-4 h-4" />
                                   </button>
                                 )}
+                                 {getDue(apt) <= 0 && (
                                  <button
                                    onClick={() => handlePrescribe(apt)}
                                    className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1453,12 +1504,20 @@ try {
                                  >
                                    <FileText className="w-4 h-4" />
                                  </button>
+                                 )}
                                  <button
                                    onClick={() => handleVitals(apt)}
                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                    title="ভাইটালস"
                                  >
                                    <Heart className="w-4 h-4" />
+                                 </button>
+                                 <button
+                                   onClick={() => handleOpenSMS(apt)}
+                                   className="p-2 text-sky-500 hover:bg-sky-50 rounded-lg transition-colors"
+                                   title="SMS পাঠান"
+                                 >
+                                   <MessageCircle className="w-4 h-4" />
                                  </button>
                                  <button
                                    onClick={() => handleEditPatient(apt)}
@@ -1492,6 +1551,7 @@ try {
                               )}
                               {apt.status === 'completed' && (
                                <div className="flex items-center justify-end gap-1">
+                                 {getDue(apt) <= 0 && (
                                  <button
                                    onClick={() => handlePrescribe(apt)}
                                    className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1499,12 +1559,20 @@ try {
                                  >
                                    <FileText className="w-4 h-4" />
                                  </button>
+                                 )}
                                  <button
                                    onClick={() => handleVitals(apt)}
                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                    title="ভাইটালস"
                                  >
                                    <Heart className="w-4 h-4" />
+                                 </button>
+                                 <button
+                                   onClick={() => handleOpenSMS(apt)}
+                                   className="p-2 text-sky-500 hover:bg-sky-50 rounded-lg transition-colors"
+                                   title="SMS পাঠান"
+                                 >
+                                   <MessageCircle className="w-4 h-4" />
                                  </button>
                                  <button
                                    onClick={() => handleEditPatient(apt)}
@@ -1611,6 +1679,17 @@ try {
               onChange={(e) => setWalkinPatient({ ...walkinPatient, name: e.target.value })}
               className="input w-full"
               placeholder="রোগীর নাম লিখুন"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-600 mb-2 block">রিসেপশনিস্টের নাম</label>
+            <input
+              type="text"
+              value={receptionistName}
+              onChange={(e) => setReceptionistName(e.target.value)}
+              className="input w-full"
+              placeholder="রিসেপশনিস্টের নাম লিখুন"
             />
           </div>
 
@@ -2169,6 +2248,31 @@ try {
             <div className="flex gap-3 pt-2">
               <Button variant="secondary" onClick={() => { setShowEditPatientModal(false); setEditPatientApt(null); }}>বাতিল</Button>
               <Button onClick={handleSavePatientDetails} loading={savingPatient}>সংরক্ষণ</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal isOpen={showSMSModal} onClose={() => { setShowSMSModal(false); setSmsAppointment(null); }} title="SMS পাঠান">
+        {smsAppointment && (
+          <div className="space-y-5">
+            <div className="p-4 bg-sky-50 rounded-xl border border-sky-200">
+              <p className="text-sm text-slate-500 mb-1">রোগী</p>
+              <p className="font-semibold">{smsAppointment.patients?.name || smsAppointment.patientName || ''}</p>
+              <p className="text-xs text-sky-600 mt-1">{smsAppointment.patients?.phone || smsAppointment.patientPhone || 'ফোন নম্বর নেই'}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">মেসেজ</label>
+              <textarea
+                value={smsMessage}
+                onChange={(e) => setSmsMessage(e.target.value)}
+                rows={6}
+                className="input w-full resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button variant="secondary" onClick={() => { setShowSMSModal(false); setSmsAppointment(null); }} className="flex-1">বাতিল</Button>
+              <Button onClick={handleSendSMS} loading={sendingSMS} className="flex-1 !bg-sky-500 hover:!bg-sky-600">পাঠান</Button>
             </div>
           </div>
         )}
