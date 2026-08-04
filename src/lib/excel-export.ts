@@ -17,9 +17,6 @@ interface PDFExportData {
     time: string;
     date: string;
     feeType: string;
-    paid: number;
-    refunded: number;
-    net: number;
     bookedBy: string;
     createdAt: string;
   }[];
@@ -264,13 +261,9 @@ export function generateAppointmentPDF(data: PDFExportData) {
     doc.text(`Date: ${data.date}`, 14, headerEnd + 10);
     doc.text(`Total: ${data.appointments.length}`, pageWidth - 14, headerEnd + 10, { align: 'right' });
 
-    const totalPaid = data.appointments.reduce((s, a) => s + (a.paid || 0), 0);
-    const totalRefunded = data.appointments.reduce((s, a) => s + (a.refunded || 0), 0);
-    const totalNet = data.appointments.reduce((s, a) => s + ((a.net ?? (a.paid || 0) - (a.refunded || 0))), 0);
-
     const tableStartY = headerEnd + 14;
 
-    const headers = [['#', 'Serial', 'Patient', 'Phone', 'Doctor', 'Department', 'Type', 'Status', 'Booked By', 'Created', 'Time', 'Fee Type', 'Paid', 'Refund', 'Net']];
+    const headers = [['#', 'Serial', 'Patient', 'Phone', 'Doctor', 'Department', 'Type', 'Status', 'Booked By', 'Created', 'Time', 'Fee Type']];
 
     const rows = data.appointments.map((apt, idx) => [
       idx + 1,
@@ -285,17 +278,7 @@ export function generateAppointmentPDF(data: PDFExportData) {
       formatDateTime(apt.createdAt),
       apt.time || '-',
       apt.feeType || '-',
-      apt.paid || 0,
-      apt.refunded || 0,
-      (apt.net ?? (apt.paid || 0) - (apt.refunded || 0)),
     ]);
-
-    const totalRow: any[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
-    totalRow[11] = { content: 'GRAND TOTAL', styles: { fontStyle: 'bold', fillColor: [13, 93, 158], textColor: [255, 255, 255] } };
-    totalRow[12] = { content: `Tk. ${totalPaid.toLocaleString()}`, styles: { fontStyle: 'bold', fillColor: [230, 245, 255] } };
-    totalRow[13] = { content: `Tk. ${totalRefunded.toLocaleString()}`, styles: { fontStyle: 'bold', fillColor: [255, 235, 235], textColor: [190, 30, 30] } };
-    totalRow[14] = { content: `Tk. ${totalNet.toLocaleString()}`, styles: { fontStyle: 'bold', fillColor: [255, 235, 235], textColor: [190, 30, 30] } };
-    rows.push(totalRow);
 
     autoTable(doc, {
       startY: tableStartY,
@@ -304,22 +287,21 @@ export function generateAppointmentPDF(data: PDFExportData) {
       styles: { fontSize: 7, cellPadding: 1.5, overflow: 'ellipsize' },
       headStyles: { fillColor: PRIMARY, textColor: [255, 255, 255], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [235, 245, 255] },
+      // Fixed widths summing to the full usable width (pageWidth 297 - margins 20 = 277mm)
+      // Serial gets extra room so codes like DR01-001AN5572 are never truncated.
       columnStyles: {
-        0: { cellWidth: 6 },
-        1: { cellWidth: 18 },
-        2: { cellWidth: 24 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 26 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 13 },
-        7: { cellWidth: 13 },
-        8: { cellWidth: 18 },
-        9: { cellWidth: 22 },
-        10: { cellWidth: 12 },
-        11: { cellWidth: 26 },
-        12: { cellWidth: 18 },
-        13: { cellWidth: 18 },
-        14: { cellWidth: 18 },
+        0: { cellWidth: 8 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 36 },
+        3: { cellWidth: 24 },
+        4: { cellWidth: 42 },
+        5: { cellWidth: 24 },
+        6: { cellWidth: 12 },
+        7: { cellWidth: 12 },
+        8: { cellWidth: 22 },
+        9: { cellWidth: 28 },
+        10: { cellWidth: 14 },
+        11: { cellWidth: 25 },
       },
       margin: { left: 10, right: 10 },
       showFoot: 'lastPage',

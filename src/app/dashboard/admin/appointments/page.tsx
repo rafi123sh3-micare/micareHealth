@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, CheckCircle, Plus, Zap, FileText, Upload, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
+import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, CheckCircle, Plus, FileText, Upload, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
@@ -18,7 +18,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
 import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateExpectedTime, compareBySerialNumber } from '@/lib/sms';
 import DatePicker from '@/components/ui/DatePicker';
 import { motion } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
@@ -119,6 +119,23 @@ const getLocalDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
+/** Find a doctor's shift start time for a given date from a list of schedules. */
+function resolveScheduleStart(scheduleList: any[], date: string): string | null {
+  if (!scheduleList || scheduleList.length === 0) return null;
+  const oldMatch = scheduleList.find((s: any) => s.date === date);
+  if (oldMatch?.start_time) return oldMatch.start_time.substring(0, 5);
+  const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
+  const aptDate = new Date(date + 'T00:00:00');
+  const dayName = dayMap[aptDate.getDay()];
+  const dayMatch = scheduleList.find((s: any) => {
+    if (!s.selected_days?.includes(dayName)) return false;
+    const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
+    const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
+    return startOk && endOk;
+  });
+  return dayMatch?.start_time?.substring(0, 5) || null;
+}
+
 export default function AdminAppointments() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
@@ -147,10 +164,7 @@ export default function AdminAppointments() {
     advance: 0 as number,
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
-  const [specialTimePower, setSpecialTimePower] = useState(false);
-  const [customTime, setCustomTime] = useState('');
   const [schedules, setSchedules] = useState<any[]>([]);
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrAppointment, setQRAppointment] = useState<any>(null);
   const [showInvoiceEditModal, setShowInvoiceEditModal] = useState(false);
@@ -214,19 +228,9 @@ export default function AdminAppointments() {
     if (walkinPatient.doctor_id && walkinPatient.date) {
       loadDoctorSchedules();
     }
-  }, [walkinPatient.doctor_id, walkinPatient.date, specialTimePower, customTime]);
+  }, [walkinPatient.doctor_id, walkinPatient.date]);
 
   async function loadDoctorSchedules() {
-    if (specialTimePower) {
-      const now = new Date();
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const currentTime = `${hours}:${minutes}`;
-      setAvailableSlots([currentTime]);
-      setSchedules([{ id: 'custom', start_time: currentTime, end_time: currentTime }]);
-      return;
-    }
-
     const { data } = await supabase
       .from('schedules')
       .select('*')
@@ -256,14 +260,8 @@ export default function AdminAppointments() {
       );
 
       setSchedules(matchingSchedules);
-      const ranges: string[] = [];
-      matchingSchedules.forEach((schedule: any) => {
-        ranges.push(`${schedule.start_time?.substring(0, 5)} - ${schedule.end_time?.substring(0, 5)}`);
-      });
-      setAvailableSlots(ranges);
     } else {
       setSchedules([]);
-      setAvailableSlots([]);
     }
   }
 
@@ -361,9 +359,7 @@ export default function AdminAppointments() {
         cancelled: 4,
       };
 
-      const sorted = mapped.sort((a, b) => {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      });
+      const sorted = mapped.sort(compareBySerialNumber);
 
       setAppointments(sorted);
       setCache('admin_appointments', sorted);
@@ -401,10 +397,7 @@ export default function AdminAppointments() {
     });
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
-      const sorted = [...group].sort((a, b) => {
-        if (a.serial_number && b.serial_number) return a.serial_number.localeCompare(b.serial_number);
-        return (a.created_at || '').localeCompare(b.created_at || '');
-      });
+      const sorted = [...group].sort(compareBySerialNumber);
       const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
       const firstTime = (baseScheduleStart || sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
       const baseHours = firstTime[0] || 9;
@@ -421,7 +414,8 @@ export default function AdminAppointments() {
     return times;
   }
 
-  const filteredAppointments = appointments.filter(apt => {
+  const filteredAppointments = appointments
+    .filter(apt => {
     if (filterDate && apt.date !== filterDate) return false;
     if (filterDoctor && apt.doctor_id !== filterDoctor) return false;
     if (filterStatus && apt.status !== filterStatus && apt.displayStatus !== filterStatus) return false;
@@ -434,9 +428,21 @@ export default function AdminAppointments() {
       if (!patientMatch && !doctorMatch) return false;
     }
     return true;
-  });
+  })
+    .sort(compareBySerialNumber);
 
   const expectedTimes = getExpectedTimes(filteredAppointments);
+
+  // Base time used by the SMS expected-time calculation — the doctor's schedule start for
+  // the date, falling back to the earliest appointment's time in the group (same as the table).
+  const getExpectedBaseTime = (doctorId: string, date: string): string => {
+    const group = appointments.filter(a => a.doctor_id === doctorId && a.date === date);
+    const sorted = [...group].sort(compareBySerialNumber);
+    const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
+    if (baseScheduleStart) return baseScheduleStart;
+    const firstTime = sorted.find(a => a.time)?.time;
+    return (firstTime || '09:00').split(' - ')[0];
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -444,8 +450,7 @@ export default function AdminAppointments() {
   };
 
   function handleExportPDF() {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+    const dateStr = (filterDate || filteredAppointments[0]?.date || '').replace(/-/g, '/');
     generateAppointmentPDF({
       title: `Micare Health - Appointment Report`,
       date: dateStr,
@@ -466,9 +471,6 @@ export default function AdminAppointments() {
           time: apt.time || '-',
           date: apt.date || '-',
           feeType: feeTypeLabel,
-          paid: apt.paid || 0,
-          refunded: apt.refunded || 0,
-          net: (apt.paid || 0) - (apt.refunded || 0),
           bookedBy: apt.booked_by || '-',
           createdAt: apt.created_at || '',
         };
@@ -547,7 +549,7 @@ export default function AdminAppointments() {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
               apt.date,
-              apt.scheduleStart || apt.time || '',
+              getExpectedBaseTime(apt.doctor_id, apt.date),
               updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);
@@ -718,13 +720,9 @@ export default function AdminAppointments() {
     setCreatingWalkin(true);
 
 try {
-      const getCurrentTime = () => {
-        const now = new Date();
-        return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      };
-      const appointmentTime = specialTimePower
-        ? getCurrentTime()
-        : (walkinPatient.time ? walkinPatient.time.split(' - ')[0] : '09:00');
+      // Time is auto-derived from the doctor's schedule start for the selected date
+      const scheduleStart = resolveScheduleStart(schedules, walkinPatient.date);
+      const appointmentTime = scheduleStart || '09:00';
       const type = walkinPatient.type === 'teleconsult' ? 'teleconsult' : 'appointment';
       const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
@@ -774,38 +772,12 @@ try {
 
       const walkinDoctor = doctors.find(d => d.id === walkinPatient.doctor_id);
 
-      const [scheduleResult] = await Promise.all([
-        supabase.from('schedules')
-          .select('start_time, selected_days, start_date, end_date, date')
-          .eq('doctor_id', walkinPatient.doctor_id)
-          .eq('status', 'active'),
-        !walkinPatient.bcode
-          ? fetch(`/api/gen-bcode?patient_id=${newPatient.id}`).then(r => r.json()).then(d => { if (d.code) walkinPatient.bcode = d.code; }).catch(() => {})
-          : Promise.resolve()
-      ]);
-
-      let scheduleStart = null;
-      const scheduleData = scheduleResult.data;
-      if (scheduleData && scheduleData.length > 0) {
-        let match: any = null;
-        const oldMatch = scheduleData.find((s: any) => s.date === walkinPatient.date);
-        if (oldMatch) {
-          match = oldMatch;
-        } else {
-          const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
-          const aptDate = new Date(walkinPatient.date + 'T00:00:00');
-          const dayName = dayMap[aptDate.getDay()];
-          const dayMatch = scheduleData.find((s: any) => {
-            if (!s.selected_days?.includes(dayName)) return false;
-            const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
-            const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
-            return startOk && endOk;
-          });
-          if (dayMatch) match = dayMatch;
-        }
-        if (match && match.start_time) {
-          scheduleStart = match.start_time.substring(0, 5);
-        }
+      if (!walkinPatient.bcode) {
+        try {
+          const r = await fetch(`/api/gen-bcode?patient_id=${newPatient.id}`);
+          const d = await r.json();
+          if (d.code) walkinPatient.bcode = d.code;
+        } catch (e) {}
       }
 
       toast.success('অ্যাপয়েন্টমেন্ট যোগ হয়েছে');
@@ -838,7 +810,7 @@ try {
           const smsText = buildConfirmationSMS(
             walkinDoctor?.name || '',
             walkinPatient.date,
-            scheduleStart || appointmentTime,
+            scheduleStart || getExpectedBaseTime(walkinPatient.doctor_id, walkinPatient.date),
             serialNumber || ''
           );
           await sendSMS(walkinPatient.phone, smsText);
@@ -848,8 +820,6 @@ try {
       }
       setShowWalkinModal(false);
       setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0 });
-      setSpecialTimePower(false);
-      setCustomTime('');
       loadData();
     } catch (err) {
       toast.error('কিছু সমস্যা হয়েছে');
@@ -950,7 +920,7 @@ try {
     setSmsMessage(buildConfirmationSMS(
       apt.doctors?.name || apt.doctorName || '',
       apt.date,
-      apt.scheduleStart || apt.time || '',
+      getExpectedBaseTime(apt.doctor_id, apt.date),
       apt.serial_number || ''
     ));
     setShowSMSModal(true);
@@ -1822,54 +1792,18 @@ try {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-slate-600 mb-2 block">তারিখ</label>
-              <input
-                type="date"
-                value={walkinPatient.date}
-                onChange={(e) => setWalkinPatient({ ...walkinPatient, date: e.target.value, time: '' })}
-                className="input w-full"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-600 mb-2 block">সময় *</label>
-              <div className="flex items-center gap-2 mb-2">
-                <button
-                  type="button"
-                  onClick={() => setSpecialTimePower(!specialTimePower)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${specialTimePower
-                      ? 'bg-amber-100 text-amber-700 border border-amber-300'
-                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                    }`}
-                >
-                  <Zap className="w-4 h-4" />
-                  বিশেষ ক্ষমতা ~ সময়
-                </button>
-              </div>
-              {specialTimePower && (
-                <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded-lg mb-2">
-                  বর্তমান সময় ব্যবহার করা হবে
-                </div>
-              )}
-              {availableSlots.length > 0 ? (
-                <select
-                  value={walkinPatient.time}
-                  onChange={(e) => setWalkinPatient({ ...walkinPatient, time: e.target.value })}
-                  className="input w-full"
-                  disabled={specialTimePower}
-                >
-                  <option value="">সময় নির্বাচন করুন</option>
-                  {availableSlots.map((slot) => (
-                    <option key={slot} value={slot}>{slot}</option>
-                  ))}
-                </select>
-              ) : (
-                <div className="text-sm text-red-500 bg-red-50 p-3 rounded-lg">
-                  এই তারিখে ডাক্তারের কোনো শিফট নেই
-                </div>
-              )}
-            </div>
+          <div>
+            <label className="text-sm font-medium text-slate-600 mb-2 block">তারিখ</label>
+            <input
+              type="date"
+              value={walkinPatient.date}
+              onChange={(e) => setWalkinPatient({ ...walkinPatient, date: e.target.value, time: '' })}
+              className="input w-full"
+            />
+            <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" />
+              প্রত্যাশিত সময় সিরিয়াল অনুযায়ী স্বয়ংক্রিয়ভাবে নির্ধারিত হবে
+            </p>
           </div>
 
 
@@ -2260,6 +2194,15 @@ try {
               <p className="text-sm text-slate-500 mb-1">রোগী</p>
               <p className="font-semibold">{smsAppointment.patients?.name || smsAppointment.patientName || ''}</p>
               <p className="text-xs text-sky-600 mt-1">{smsAppointment.patients?.phone || smsAppointment.patientPhone || 'ফোন নম্বর নেই'}</p>
+            </div>
+            <div className="p-3 bg-primary-50 rounded-xl border border-primary-200 flex items-center gap-3">
+              <Clock className="w-5 h-5 text-primary-600" />
+              <div>
+                <p className="text-xs text-slate-500">প্রত্যাশিত সময়</p>
+                <p className="font-semibold text-primary-700">
+                  {calculateExpectedTime(getExpectedBaseTime(smsAppointment.doctor_id, smsAppointment.date), smsAppointment.serial_number || '')}
+                </p>
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-600 mb-2 block">মেসেজ</label>

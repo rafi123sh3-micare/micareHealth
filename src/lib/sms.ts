@@ -55,6 +55,31 @@ export function extractSerialNumber(serialNumber: string): string {
   return serialNumber;
 }
 
+function getSerialSequence(serialNumber?: string): number {
+  if (!serialNumber) return NaN;
+  const seq = parseInt(extractSerialNumber(serialNumber), 10);
+  return isNaN(seq) ? NaN : seq;
+}
+
+/** Sort appointments by date, doctor, then DRxx-NNN sequence (NNN defines queue order). */
+export function compareBySerialNumber(
+  a: { serial_number?: string; created_at?: string; date?: string; doctor_id?: string },
+  b: { serial_number?: string; created_at?: string; date?: string; doctor_id?: string }
+): number {
+  if (a.date && b.date && a.date !== b.date) return a.date.localeCompare(b.date);
+  if (a.doctor_id && b.doctor_id && a.doctor_id !== b.doctor_id) return a.doctor_id.localeCompare(b.doctor_id);
+
+  const seqA = getSerialSequence(a.serial_number);
+  const seqB = getSerialSequence(b.serial_number);
+  const hasA = !isNaN(seqA);
+  const hasB = !isNaN(seqB);
+
+  if (hasA && hasB && seqA !== seqB) return seqA - seqB;
+  if (hasA && !hasB) return -1;
+  if (!hasA && hasB) return 1;
+  return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+}
+
 export function calculateExpectedTime(appointmentTime: string, serialNumber: string): string {
   const baseTime = (appointmentTime || '09:00').split(' - ')[0];
   const [rawH, rawM] = baseTime.split(':').map(Number);
