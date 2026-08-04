@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const params = new URLSearchParams();
     params.append('api_key', SMS_API_KEY);
     params.append('senderid', SMS_SENDER_ID);
-    params.append('type', 'unicode');
+    params.append('type', /[^\x00-\x7F]/.test(msg) ? 'unicode' : 'text');
     params.append('msg', msg);
     params.append('contacts', to);
     params.append('label', 'transactional');

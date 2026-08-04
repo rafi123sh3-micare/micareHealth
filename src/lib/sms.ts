@@ -40,6 +40,21 @@ export async function sendSMS(phone: string, message: string): Promise<boolean> 
   }
 }
 
+/**
+ * Extracts the sequential patient number (1, 2, 3, ...) from the generated
+ * serial code (e.g. "DR01-001AN5363" -> "1").
+ * Falls back to the raw code if it does not match the expected format.
+ */
+export function extractSerialNumber(serialNumber: string): string {
+  if (!serialNumber) return '';
+  const match = serialNumber.match(/-(\d+)/);
+  if (match) {
+    const seq = parseInt(match[1], 10);
+    if (!isNaN(seq)) return String(seq);
+  }
+  return serialNumber;
+}
+
 export function calculateExpectedTime(appointmentTime: string, serialNumber: string): string {
   const baseTime = (appointmentTime || '09:00').split(' - ')[0];
   const [rawH, rawM] = baseTime.split(':').map(Number);
@@ -47,13 +62,8 @@ export function calculateExpectedTime(appointmentTime: string, serialNumber: str
   const baseM = rawM || 0;
 
   let position = 0;
-  if (serialNumber) {
-    const match = serialNumber.match(/-(\d+)/);
-    if (match) {
-      const seq = parseInt(match[1], 10);
-      if (!isNaN(seq)) position = Math.max(0, seq - 1);
-    }
-  }
+  const seq = parseInt(extractSerialNumber(serialNumber), 10);
+  if (!isNaN(seq)) position = Math.max(0, seq - 1);
 
   const totalMin = baseH * 60 + baseM + position * 5;
   const h = Math.floor(totalMin / 60) % 24;
@@ -69,17 +79,18 @@ export function buildConfirmationSMS(
   time: string,
   serialNumber: string
 ): string {
-  const formattedDate = formatDateBangla(date);
+  const formattedDate = formatDateEnglish(date);
   const expectedTime = calculateExpectedTime(time, serialNumber);
+  const serial = extractSerialNumber(serialNumber);
 
-  return `আপনার অ্যাপয়েন্টমেন্ট নিশ্চিত করা হয়েছে।
+  return `Your appointment has been confirmed.
 ${doctorName}
-তারিখ: ${formattedDate}
-সময়: ${expectedTime}
-Serial Number: ${serialNumber}`;
+Date: ${formattedDate}
+Time: ${expectedTime}
+Serial Number: ${serial}`;
 }
 
-function formatDateBangla(dateStr: string): string {
+function formatDateEnglish(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 }
