@@ -141,7 +141,7 @@ export default function DoctorDashboard() {
       .eq('date', todayStr)
       .neq('status', 'cancelled')
       .order('created_at', { ascending: true })
-      .limit(50);
+      .limit(1000);
 
     const todayApts = supabaseApts || [];
     

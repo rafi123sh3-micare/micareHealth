@@ -53,29 +53,27 @@ export default function AdminDashboard() {
 
   async function loadDashboardData() {
     const todayStr = getLocalDateString();
-    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const firstDayStr = `${firstDayOfMonth.getFullYear()}-${String(firstDayOfMonth.getMonth() + 1).padStart(2, '0')}-${String(firstDayOfMonth.getDate()).padStart(2, '0')}`;
 
-    const { data: supabaseApts, error: aptError } = await supabase
+    // Today's appointments are filtered server-side so the KPI counts stay
+    // correct even when the table holds many rows. (Previously a 50-row limit
+    // with no date filter could leave today's appointments out of the results,
+    // showing 0 for every status.)
+    const { data: todayAptsData, error: aptError } = await supabase
+      .from('appointments')
+      .select('*, doctors(name, specialization, consultation_fee), patients(name)')
+      .eq('date', todayStr)
+      .order('created_at', { ascending: false })
+      .limit(1000);
+
+    // Latest appointments across all dates, for the "recent" list.
+    const { data: recentAptsData } = await supabase
       .from('appointments')
       .select('*, doctors(name, specialization, consultation_fee), patients(name)')
       .order('created_at', { ascending: false })
       .limit(50);
 
-    const todayApts = (supabaseApts || []).filter((apt: any) => {
-      const aptDate = apt.date || '';
-      return aptDate.toString().split('T')[0] === todayStr;
-    });
-
-    const monthApts = (supabaseApts || []).filter((apt: any) => {
-      const aptDate = apt.date || '';
-      return aptDate.toString().split('T')[0] >= firstDayStr && apt.status === 'confirmed';
-    });
-
-    const patientIds = new Set<string>();
-    todayApts.forEach((a: any) => {
-      if (a.patient_id) patientIds.add(a.patient_id);
-    });
+    const todayApts = todayAptsData || [];
+    const supabaseApts = recentAptsData || [];
 
     const pendingTotal = todayApts.filter((a: any) => a.status === 'pending').length || 0;
     const pendingApt = todayApts.filter((a: any) => a.status === 'pending' && a.type !== 'teleconsult').length || 0;
