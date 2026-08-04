@@ -282,12 +282,12 @@ export default function AdminAppointments() {
       }
     }
 
-    // Fetch fresh data
+    // Fetch fresh data (newest first so they are never truncated by the limit)
     const { data: apts, error: aptError } = await supabase
       .from('appointments')
       .select('*, doctors(name, specialization), patients(name, phone, age, sex)')
-      .order('created_at', { ascending: true })
-      .limit(100);
+      .order('created_at', { ascending: false })
+      .limit(500);
 
     if (aptError) {
       console.error('Error fetching appointments:', aptError);
