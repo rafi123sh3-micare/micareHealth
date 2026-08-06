@@ -1161,7 +1161,7 @@ const statusOrder: Record<string, number> = {
           </div>
         </div>
 
-        <Card className="bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-lg shadow-slate-200/20">
+        <Card className="relative z-40 bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-lg shadow-slate-200/20">
           <div className="flex flex-wrap gap-4 items-end">
             <div className="min-w-[160px]">
               <label className="text-sm font-medium text-slate-600 mb-2 block">তারিখ</label>
