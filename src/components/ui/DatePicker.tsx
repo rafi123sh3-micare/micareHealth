@@ -83,7 +83,8 @@ export default function DatePickerComponent({
       showMonthDropdown
       showYearDropdown
       dropdownMode="scroll"
-      popperClassName="!z-[100]"
+      popperClassName="!z-[9999]"
+      portalId="datepicker-portal"
       customInput={<DatePickerInput className={className} placeholder={placeholder} />}
       calendarClassName="!rounded-xl !shadow-xl !border !border-slate-200 !p-3"
     />
