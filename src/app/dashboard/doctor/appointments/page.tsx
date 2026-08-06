@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, Upload, Check, Plus, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
+import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, ChevronRight, ChevronLeft, Upload, Check, Plus, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
@@ -126,6 +126,8 @@ export default function DoctorAppointments() {
   const [filterType, setFilterType] = useState('');
   const [search, setSearch] = useState('');
   const [highlightedSerial, setHighlightedSerial] = useState<string | null>(null);
+
+  const [showCoreCols, setShowCoreCols] = useState(false);
   const serialRowRef = useRef<HTMLTableRowElement | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -366,6 +368,8 @@ const statusOrder: Record<string, number> = {
     return times;
   }
 
+  const expectedTimes = getExpectedTimes(appointments);
+
   const filteredAppointments = appointments
     .filter(apt => {
     if (filterDate && apt.date !== filterDate) return false;
@@ -373,13 +377,35 @@ const statusOrder: Record<string, number> = {
     if (filterType && apt.type !== filterType) return false;
     if (search) {
       const searchLower = search.toLowerCase();
-      if (!apt.patientName?.toLowerCase().includes(searchLower)) return false;
+      const statusLabel = ({ pending: 'অপেক্ষায়', confirmed: 'নিশ্চিত', upcoming: 'আসন্ন', completed: 'সম্পন্ন', cancelled: 'বাতিল' } as Record<string, string>)[apt.displayStatus || apt.status] || '';
+      const haystack = [
+        apt.serial_number,
+        apt.patientName, apt.patients?.name, apt.patientPhone, apt.patients?.phone, apt.patient_mobile,
+        apt.doctorName, apt.doctors?.name,
+        apt.date, new Date(apt.date).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' }),
+        expectedTimes[apt.id],
+        apt.type === 'teleconsult' ? 'ভিডিও' : 'সরাসরি', apt.type,
+        apt.booked_by,
+        statusLabel,
+        String(apt.paid || 0), String(apt.refunded || 0),
+        String(Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))),
+        String(getFeeAmount(apt.fee_type) - (apt.refunded || 0)),
+      ].filter(Boolean).join(' ').toLowerCase();
+      const variants = [searchLower];
+      const numRuns = searchLower.match(/[0-9]+/g);
+      if (numRuns) {
+        numRuns.forEach(n => {
+          for (let pad = 1; pad <= 5; pad++) {
+            const padded = searchLower.replace(n, '0'.repeat(pad) + n);
+            if (!variants.includes(padded)) variants.push(padded);
+          }
+        });
+      }
+      if (!variants.some(v => haystack.includes(v))) return false;
     }
     return true;
   })
     .sort(compareBySerialNumber);
-
-  const expectedTimes = getExpectedTimes(filteredAppointments);
 
   // Base time used by the SMS expected-time calculation — the doctor's schedule start for
   // the date, falling back to the earliest appointment's time in the group (same as the table).
@@ -1018,7 +1044,7 @@ const statusOrder: Record<string, number> = {
     const dSpecialty = (apt.doctors?.specialty || apt.doctors?.specialization || '').replace(/[<>]/g, '');
     const pSerial = apt.serial_number || null;
     const pSerialDisplay = pSerial || '-';
-    pw.document.write(`<html><head><title>Appointment Slip</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"><\/script><style>@page{size:4.13in 2.17in;margin:2mm}body{font-family:sans-serif;padding:6px;max-width:100%;margin:0 auto;font-size:8px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.details{margin-bottom:4px}.details div{margin-bottom:1px;font-size:8px}.label{font-weight:600;color:#555;display:inline-block;width:65px;font-size:8px}.consultant{border-top:1px solid #e2e8f0;padding-top:3px;font-size:8px}.consultant .info{display:inline-block;vertical-align:top}.consultant .name{font-weight:500}.consultant .designation{font-size:7px;color:#666;word-break:break-word;white-space:pre-line}img.logo{height:22px;width:auto}@media print{body{padding:3px}}</style></head><body><div class="header"><div><svg id="barcode"></svg></div><img src="https://iili.io/Cf3Yo8b.png" class="logo" /></div><div class="details"><div><span class="label">Patient Serial:</span>${pSerialDisplay}</div><div><span class="label">Patient Name:</span>${pName}</div><div><span class="label">Gender:</span>${pGender.charAt(0).toUpperCase() + pGender.slice(1)}<span style="margin-left:50px;font-weight:600;color:#555;">Age:</span> ${pAge}</div><div><span class="label">Phone:</span>${pPhone}</div></div><div class="consultant"><span class="label" style="vertical-align:top;">Consultant:</span><div class="info"><div class="name">${dName}</div>${dDesignation ? `<div class="designation">${dDesignation}</div>` : ''}</div></div><script>${bcode ? `JsBarcode("#barcode","${bcode}",{format:"CODE128",width:1.5,height:50,displayValue:false,margin:5});` : ''}setTimeout(function(){window.print()},500);<\/script></body></html>`);
+    pw.document.write(`<html><head><title>Appointment Slip</title><script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js"><\/script><style>@page{size:4.13in 2.17in;margin:2mm}body{font-family:sans-serif;padding:10px 6px 6px;max-width:100%;margin:0 auto;font-size:8px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}.details{margin-bottom:4px}.details div{margin-bottom:1px;font-size:8px}.label{font-weight:600;color:#555;display:inline-block;width:65px;font-size:8px}.consultant{border-top:1px solid #e2e8f0;padding-top:3px;font-size:8px}.consultant .info{display:inline-block;vertical-align:top}.consultant .name{font-weight:500}.consultant .designation{font-size:7px;color:#666;word-break:break-word;white-space:pre-line}img.logo{height:22px;width:auto}@media print{body{padding:3px}}</style></head><body><div class="header"><div style="margin-left:16px;margin-top:2px"><svg id="barcode"></svg></div><img src="https://iili.io/Cf3Yo8b.png" class="logo" /></div><div class="details"><div><span class="label">Patient Serial:</span>${pSerialDisplay}</div><div><span class="label">Patient Name:</span>${pName}</div><div><span class="label">Gender:</span>${pGender.charAt(0).toUpperCase() + pGender.slice(1)}<span style="margin-left:50px;font-weight:600;color:#555;">Age:</span> ${pAge}</div><div><span class="label">Phone:</span>${pPhone}</div></div><div class="consultant"><span class="label" style="vertical-align:top;">Consultant:</span><div class="info"><div class="name">${dName}</div>${dDesignation ? `<div class="designation">${dDesignation}</div>` : ''}</div></div><script>${bcode ? `JsBarcode("#barcode","${bcode}",{format:"CODE128",width:1.5,height:50,displayValue:false,margin:5});` : ''}setTimeout(function(){window.print()},500);<\/script></body></html>`);
     pw.document.close();
   };
 
@@ -1180,19 +1206,19 @@ const statusOrder: Record<string, number> = {
           </div>
         </Card>
 
-        <Card padding="none">
+        <Card padding="none" className="relative">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50/80 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">সিরিয়াল</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">সিরিয়াল</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">রোগী</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">মোবাইল নম্বর</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">বুক করেছে</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>
+                  {showCoreCols && <th className="px-4 py-3 text-left font-semibold text-slate-600">তারিখ</th>}
+                  {showCoreCols && <th className="px-4 py-3 text-left font-semibold text-slate-600">প্রত্যাশিত সময়</th>}
+                  {showCoreCols && <th className="px-4 py-3 text-left font-semibold text-slate-600">ধরন</th>}
+                  {showCoreCols && <th className="px-4 py-3 text-left font-semibold text-slate-600">বুক করেছে</th>}
+                  {showCoreCols && <th className="px-4 py-3 text-left font-semibold text-slate-600">স্ট্যাটাস</th>}
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Refund</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Due</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">নেট</th>
@@ -1225,23 +1251,34 @@ const statusOrder: Record<string, number> = {
                       </td>
                       <td className="px-4 py-3"><span className="font-medium text-slate-900">{apt.patientName}</span></td>
                       <td className="px-4 py-3"><div className="text-xs text-slate-500">{apt.patientPhone || '-'}</div></td>
+                      {showCoreCols && (
                       <td className="px-4 py-3">
                         <span className="text-slate-600">{formatDate(apt.date)}</span>
                       </td>
+                      )}
+                      {showCoreCols && (
                       <td className="px-4 py-3">
                         <span className="font-mono text-sm font-semibold text-primary-600">{expectedTimes[apt.id] || '-'}</span>
                       </td>
+                      )}
+                      {showCoreCols && (
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs ${apt.type === 'teleconsult' ? 'text-purple-600' : 'text-slate-600'}`}>
                           {apt.type === 'teleconsult' && <Video className="w-3 h-3" />}
                           {apt.type === 'teleconsult' ? 'ভিডিও' : 'সরাসরি'}
                         </span>
                       </td>
+                      )}
+                      {showCoreCols && (
                       <td className="px-4 py-3">
                         <span className="text-xs text-slate-600">{apt.booked_by || '-'}</span>
                       </td>
+                      )}
+                      {showCoreCols && (
                       <td className="px-4 py-3">{getStatusBadge(apt.status, apt.displayStatus)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
+                      )}
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>
+                      <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
                        <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
                        <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
                       <td className="px-4 py-3 text-center">
@@ -1295,6 +1332,14 @@ const statusOrder: Record<string, number> = {
               </tbody>
             </table>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowCoreCols(prev => !prev)}
+            title={showCoreCols ? 'কলাম লুকান' : 'কলাম দেখান'}
+            className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 z-10 inline-flex items-center justify-center w-6 h-6 rounded-full bg-white text-primary-600 border border-slate-300 shadow-sm hover:bg-primary-50 hover:border-primary-400 hover:text-primary-700 transition-colors"
+          >
+            {showCoreCols ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
         </Card>
       </motion.div>
 

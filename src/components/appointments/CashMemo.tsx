@@ -38,8 +38,8 @@ export function generateCashMemoPrint(data: CashMemoData) {
   const fmtAmt = (n: number) => n.toFixed(2);
 
   const statusBadge = data.isPaid
-    ? `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(22,163,74,0.12);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(22,163,74,0.20);padding:6px 4px;border-radius:4px;">PAID</div>`
-    : `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(220,38,38,0.12);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(220,38,38,0.20);padding:6px 4px;border-radius:4px;">DUE</div>`;
+    ? `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(22,163,74,0.32);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(22,163,74,0.45);padding:6px 4px;border-radius:4px;">PAID</div>`
+    : `<div style="position:absolute;top:50%;left:5px;transform:translateY(-50%);font-size:28px;font-weight:900;color:rgba(220,38,38,0.32);writing-mode:vertical-lr;letter-spacing:4px;border:3px solid rgba(220,38,38,0.45);padding:6px 4px;border-radius:4px;">DUE</div>`;
 
   const logRows = data.paymentLog
     .map(
@@ -78,6 +78,7 @@ export function generateCashMemoPrint(data: CashMemoData) {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      margin-top: 8px;
       margin-bottom: 5px;
       padding-bottom: 4px;
       border-bottom: 1.5px solid #e2e8f0;
