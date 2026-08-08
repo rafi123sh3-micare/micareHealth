@@ -1312,7 +1312,7 @@ try {
       refund: refundedAmt,
       due: (feeAmt - refundedAmt) - paidAmt,
       inWords: numberToWords(feeAmt - refundedAmt),
-      isPaid: (feeAmt - (paidAmt - refundedAmt)) <= 0,
+      isPaid: (feeAmt - refundedAmt - paidAmt) <= 0,
       paymentLog: [
         {
           paymentType: feeLabel,
