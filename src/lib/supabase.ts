@@ -28,10 +28,19 @@ function getLast4PhoneDigits(phone?: string): string {
   return cleaned.slice(-4);
 }
 
-export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string): Promise<string> {
+export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string, excludeAppointmentId?: string): Promise<string> {
+  let countQuery = supabase
+    .from('appointments')
+    .select('id')
+    .eq('doctor_id', doctorId)
+    .eq('date', date)
+    .in('status', ['confirmed', 'completed']);
+  if (excludeAppointmentId) {
+    countQuery = countQuery.neq('id', excludeAppointmentId);
+  }
   const [doctorResult, countResult] = await Promise.all([
     supabase.from('doctors').select('doctor_code').eq('id', doctorId).single(),
-    supabase.from('appointments').select('id').eq('doctor_id', doctorId).eq('date', date).in('status', ['confirmed', 'completed'])
+    countQuery
   ]);
 
   const doctorCode = doctorResult.data?.doctor_code || 'DR01';

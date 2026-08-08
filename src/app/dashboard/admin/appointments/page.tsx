@@ -175,10 +175,20 @@ export default function AdminAppointments() {
   const [editRefunded, setEditRefunded] = useState(0);
   const [savingInvoice, setSavingInvoice] = useState(false);
 
-  // Edit patient state
+  // Edit patient state (full walk-in model)
   const [showEditPatientModal, setShowEditPatientModal] = useState(false);
   const [editPatientApt, setEditPatientApt] = useState<any>(null);
   const [editPatientForm, setEditPatientForm] = useState({ name: '', phone: '', age: '', sex: 'male' });
+  const [editApptForm, setEditApptForm] = useState({
+    doctor_id: '',
+    type: 'in-person' as 'in-person' | 'teleconsult',
+    date: getLocalDateString(),
+    fee_type: 'new' as string,
+    advance: 0 as number,
+    reason: '',
+    booked_by: '',
+  });
+  const [editSchedules, setEditSchedules] = useState<any[]>([]);
   const [savingPatient, setSavingPatient] = useState(false);
 
   // Vitals modal state
@@ -232,6 +242,12 @@ export default function AdminAppointments() {
     }
   }, [walkinPatient.doctor_id, walkinPatient.date]);
 
+  useEffect(() => {
+    if (editPatientApt && editApptForm.doctor_id && editApptForm.date) {
+      loadEditDoctorSchedules(editApptForm.doctor_id, editApptForm.date);
+    }
+  }, [editApptForm.doctor_id, editApptForm.date]);
+
   async function loadDoctorSchedules() {
     const { data } = await supabase
       .from('schedules')
@@ -264,6 +280,33 @@ export default function AdminAppointments() {
       setSchedules(matchingSchedules);
     } else {
       setSchedules([]);
+    }
+  }
+
+  async function loadEditDoctorSchedules(doctorId: string, date: string) {
+    if (!doctorId || !date) return;
+    const { data } = await supabase
+      .from('schedules')
+      .select('*')
+      .eq('doctor_id', doctorId)
+      .lte('start_date', date)
+      .or(`end_date.is.null,end_date.gte.${date}`)
+      .order('start_time');
+
+    if (data && data.length > 0) {
+      const dayMapping: { [key: number]: string } = {
+        0: 'রবিবার',
+        1: 'সোমবার',
+        2: 'মঙ্গলবার',
+        3: 'বুধবার',
+        4: 'বৃহস্পতিবার',
+        5: 'শুক্রবার',
+        6: 'শনিবার',
+      };
+      const dayName = dayMapping[new Date(date + 'T00:00:00').getDay()];
+      setEditSchedules(data.filter((s: any) => s.selected_days?.includes(dayName)));
+    } else {
+      setEditSchedules([]);
     }
   }
 
@@ -904,6 +947,15 @@ try {
       age: apt.patients?.age?.toString() || '',
       sex: apt.patients?.sex || 'male',
     });
+    setEditApptForm({
+      doctor_id: apt.doctor_id || '',
+      type: apt.type === 'teleconsult' ? 'teleconsult' : 'in-person',
+      date: apt.date || getLocalDateString(),
+      fee_type: apt.fee_type || 'new',
+      advance: apt.paid || apt.advance || 0,
+      reason: apt.reason || '',
+      booked_by: apt.booked_by || receptionistName,
+    });
     setShowEditPatientModal(true);
   };
 
@@ -911,7 +963,7 @@ try {
     if (!editPatientApt) return;
     setSavingPatient(true);
     try {
-      const { error } = await supabase
+      const { error: patientError } = await supabase
         .from('patients')
         .update({
           name: editPatientForm.name,
@@ -920,14 +972,71 @@ try {
           sex: editPatientForm.sex,
         })
         .eq('id', editPatientApt.patient_id);
-      if (error) throw error;
+      if (patientError) throw patientError;
+
+      const scheduleStart = resolveScheduleStart(editSchedules, editApptForm.date);
+      const type = editApptForm.type === 'teleconsult' ? 'teleconsult' : 'appointment';
+
+      const doctorChanged = editPatientApt.doctor_id !== editApptForm.doctor_id;
+      const dateChanged = editPatientApt.date !== editApptForm.date;
+      const feeChanged = editPatientApt.fee_type !== editApptForm.fee_type;
+      const typeChanged = editPatientApt.type !== type;
+      const phoneChanged = editPatientForm.phone !== (editPatientApt.patients?.phone || '');
+
+      let newSerial = editPatientApt.serial_number || null;
+      if ((doctorChanged || dateChanged || feeChanged || typeChanged || phoneChanged) && editPatientApt.status === 'confirmed') {
+        newSerial = await generateSerialNumber(
+          editApptForm.doctor_id,
+          editApptForm.date,
+          type,
+          editApptForm.fee_type,
+          editPatientForm.phone,
+          editPatientApt.id
+        );
+      }
+
+      const updateData: any = {
+        doctor_id: editApptForm.doctor_id,
+        date: editApptForm.date,
+        type,
+        fee_type: editApptForm.fee_type,
+        advance: editApptForm.advance,
+        paid: editApptForm.advance,
+        reason: editApptForm.reason || null,
+        patient_mobile: editPatientForm.phone || '',
+        booked_by: editApptForm.booked_by,
+        time: scheduleStart || editPatientApt.time || '09:00',
+      };
+      if (newSerial) updateData.serial_number = newSerial;
+
+      const { error: aptError } = await supabase
+        .from('appointments')
+        .update(updateData)
+        .eq('id', editPatientApt.id);
+      if (aptError) throw aptError;
 
       const updated = { ...editPatientApt };
       if (updated.patients) {
         updated.patients = { ...updated.patients, ...editPatientForm, age: parseInt(editPatientForm.age) || 0 };
       }
+      Object.assign(updated, {
+        doctor_id: editApptForm.doctor_id,
+        date: editApptForm.date,
+        type,
+        fee_type: editApptForm.fee_type,
+        advance: editApptForm.advance,
+        paid: editApptForm.advance,
+        reason: editApptForm.reason,
+        patient_mobile: editPatientForm.phone,
+        booked_by: editApptForm.booked_by,
+      });
+      if (newSerial) updated.serial_number = newSerial;
+      if (updated.doctorName !== undefined) {
+        updated.doctorName = doctors.find(d => d.id === editApptForm.doctor_id)?.name || updated.doctorName;
+        updated.departmentName = doctors.find(d => d.id === editApptForm.doctor_id)?.specialization || updated.departmentName;
+      }
       setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
-      toast.success('রোগীর তথ্য আপডেট হয়েছে');
+      toast.success('অ্যাপয়েন্টমেন্ট আপডেট হয়েছে');
       setShowEditPatientModal(false);
       setEditPatientApt(null);
     } catch (err: any) {
@@ -1528,7 +1637,7 @@ try {
                                  <button
                                    onClick={() => handleEditPatient(apt)}
                                    className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-                                   title="রোগীর তথ্য সম্পাদনা"
+                                    title="অ্যাপয়েন্টমেন্ট সম্পাদনা"
                                  >
                                    <Pencil className="w-4 h-4" />
                                  </button>
@@ -1583,7 +1692,7 @@ try {
                                  <button
                                    onClick={() => handleEditPatient(apt)}
                                    className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-                                   title="রোগীর তথ্য সম্পাদনা"
+                                    title="অ্যাপয়েন্টমেন্ট সম্পাদনা"
                                  >
                                    <Pencil className="w-4 h-4" />
                                  </button>
@@ -2193,7 +2302,7 @@ try {
         patientName={vitalsAppointment?.patients?.name}
       />
 
-      <Modal isOpen={showEditPatientModal} onClose={() => { setShowEditPatientModal(false); setEditPatientApt(null); }} title="রোগীর তথ্য সম্পাদনা" size="md">
+      <Modal isOpen={showEditPatientModal} onClose={() => { setShowEditPatientModal(false); setEditPatientApt(null); }} title="অ্যাপয়েন্টমেন্ট সম্পাদনা" size="md">
         {editPatientApt && (
           <div className="space-y-5">
             <div className="p-4 bg-sky-50 rounded-xl border border-sky-200">
@@ -2223,6 +2332,121 @@ try {
                 </select>
               </div>
             </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">ডাক্তার নির্বাচন *</label>
+              <select
+                value={editApptForm.doctor_id}
+                onChange={(e) => setEditApptForm({ ...editApptForm, doctor_id: e.target.value })}
+                className="input w-full"
+              >
+                <option value="">ডাক্তার নির্বাচন করুন</option>
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} - {d.specialization || 'General'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">ধরন</label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditApptForm({ ...editApptForm, type: 'in-person' })}
+                  className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all ${editApptForm.type === 'in-person'
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                >
+                  সরাসরি
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditApptForm({ ...editApptForm, type: 'teleconsult' })}
+                  className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all ${editApptForm.type === 'teleconsult'
+                      ? 'border-purple-500 bg-purple-50 text-purple-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                >
+                  ভিডিও কল
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
+              <div className="grid grid-cols-3 gap-2">
+                {FEE_TYPES.map((ft) => (
+                  <button
+                    key={ft.value}
+                    type="button"
+                    onClick={() => setEditApptForm({ ...editApptForm, fee_type: ft.value, advance: Math.min(editApptForm.advance, getFeeAmount(ft.value)) })}
+                    className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                      editApptForm.fee_type === ft.value
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-semibold">{ft.label}</div>
+                    <div className="text-xs mt-0.5 opacity-75">৳{ft.amount}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
+                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editApptForm.fee_type)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={getFeeAmount(editApptForm.fee_type)}
+                  value={editApptForm.advance || ''}
+                  placeholder="০"
+                  onChange={(e) => {
+                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editApptForm.fee_type));
+                    setEditApptForm({ ...editApptForm, advance: val });
+                  }}
+                  className="input w-full text-center font-semibold"
+                />
+              </div>
+              <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
+                <span className="text-slate-500">বাকি (Due):</span>
+                <span className="font-bold text-primary-600">৳{getFeeAmount(editApptForm.fee_type) - editApptForm.advance}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">তারিখ</label>
+              <input
+                type="date"
+                value={editApptForm.date}
+                onChange={(e) => setEditApptForm({ ...editApptForm, date: e.target.value })}
+                className="input w-full"
+              />
+              <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" />
+                প্রত্যাশিত সময় সিরিয়াল অনুযায়ী স্বয়ংক্রিয়ভাবে নির্ধারিত হবে
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">রিসেপশনিস্টের নাম</label>
+              <input
+                type="text"
+                value={editApptForm.booked_by}
+                onChange={(e) => setEditApptForm({ ...editApptForm, booked_by: e.target.value })}
+                className="input w-full"
+                placeholder="রিসেপশনিস্টের নাম লিখুন"
+              />
+            </div>
+
             <div className="flex gap-3 pt-2">
               <Button variant="secondary" onClick={() => { setShowEditPatientModal(false); setEditPatientApt(null); }}>বাতিল</Button>
               <Button onClick={handleSavePatientDetails} loading={savingPatient}>সংরক্ষণ</Button>
