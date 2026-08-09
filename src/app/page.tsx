@@ -13,6 +13,7 @@ export default function Home() {
     setMounted(true);
     const role = localStorage?.getItem('userRole');
     if (role === 'admin') router.push('/dashboard/admin');
+    else if (role === 'appointment_taker') router.push('/dashboard/admin');
     else if (role === 'doctor') router.push('/dashboard/doctor');
     else if (role === 'patient') router.push('/dashboard/patient');
   }, [router]);

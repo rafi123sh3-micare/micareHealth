@@ -23,15 +23,16 @@ export default function Login() {
     const { data: admin } = await supabase
       .from('admins')
       .select('*')
-      .eq('email', email.toLowerCase())
+      .ilike('email', email.trim().toLowerCase() + '%')
       .maybeSingle();
 
     if (admin) {
       if (password.trim() === admin.passcode) {
-        localStorage.setItem('userRole', 'admin');
+        const isTaker = admin.role === 'appointment_taker';
+        localStorage.setItem('userRole', isTaker ? 'appointment_taker' : 'admin');
         localStorage.setItem('adminData', JSON.stringify(admin));
         router.push('/dashboard/admin');
-        toast.success('অ্যাডমিন হিসেবে লগইন!');
+        toast.success(isTaker ? 'অ্যাপয়েন্টমেন্ট টেকার হিসেবে লগইন!' : 'অ্যাডমিন হিসেবে লগইন!');
         setLoading(false);
         return;
       } else {
@@ -44,7 +45,7 @@ export default function Login() {
     const { data: doctor } = await supabase
       .from('doctors')
       .select('*')
-      .eq('email', email.toLowerCase())
+      .ilike('email', email.trim().toLowerCase() + '%')
       .single();
 
     if (doctor && doctor.passcode === password.trim()) {
@@ -59,7 +60,7 @@ export default function Login() {
     const { data: patient } = await supabase
       .from('patients')
       .select('*')
-      .eq('email', email.toLowerCase())
+      .ilike('email', email.trim().toLowerCase() + '%')
       .single();
 
     if (patient && patient.password === password.trim()) {

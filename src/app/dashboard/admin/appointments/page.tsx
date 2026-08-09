@@ -140,6 +140,11 @@ export default function AdminAppointments() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [effectiveRole, setEffectiveRole] = useState<'admin' | 'appointment_taker'>('admin');
+
+  useEffect(() => {
+    setEffectiveRole(localStorage.getItem('userRole') === 'appointment_taker' ? 'appointment_taker' : 'admin');
+  }, []);
 
   const [filterDate, setFilterDate] = useState(getLocalDateString());
   const [filterDoctor, setFilterDoctor] = useState('');
@@ -1368,7 +1373,7 @@ try {
 
   if (loading) {
     return (
-      <DashboardLayout role="admin">
+      <DashboardLayout role={effectiveRole}>
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
         </div>
@@ -1657,29 +1662,33 @@ try {
                                  >
                                    <Pencil className="w-4 h-4" />
                                  </button>
-                                 <button
-                                   onClick={() => handleHistory(apt)}
-                                   className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
-                                   title="ইতিহাস"
-                                 >
-                                   <FileText className="w-4 h-4" />
-                                  </button>
                                   <button
-                                    onClick={() => handlePrintSlipFromTable(apt)}
-                                    className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
-                                    title="স্লিপ প্রিন্ট"
+                                    onClick={() => handleHistory(apt)}
+                                    className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                                    title="ইতিহাস"
                                   >
-                                    <Printer className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
-                                    className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                    title="ইনভয়েস"
-                                  >
-                                    <Receipt className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
+                                    <FileText className="w-4 h-4" />
+                                   </button>
+                                   {effectiveRole !== 'appointment_taker' && (
+                                   <button
+                                     onClick={() => handlePrintSlipFromTable(apt)}
+                                     className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
+                                     title="স্লিপ প্রিন্ট"
+                                   >
+                                     <Printer className="w-4 h-4" />
+                                   </button>
+                                   )}
+                                   {effectiveRole !== 'appointment_taker' && (
+                                   <button
+                                     onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
+                                     className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                     title="ইনভয়েস"
+                                   >
+                                     <Receipt className="w-4 h-4" />
+                                   </button>
+                                   )}
+                                 </>
+                               )}
                               {apt.status === 'completed' && (
                                <div className="flex items-center justify-end gap-1">
                                  {getDue(apt) <= 0 && (
@@ -1712,27 +1721,31 @@ try {
                                  >
                                    <Pencil className="w-4 h-4" />
                                  </button>
-                                 <button
-                                   onClick={() => handleHistory(apt)}
-                                  className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
-                                  title="ইতিহাস"
-                                >
-                                  <FileText className="w-4 h-4" />
-                                </button>
                                 <button
-                                  onClick={() => handlePrintSlipFromTable(apt)}
-                                  className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
-                                  title="স্লিপ প্রিন্ট"
-                                >
-                                  <Printer className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
-                                  className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
-                                  title="ইনভয়েস"
-                                >
-                                  <Receipt className="w-4 h-4" />
-                                </button>
+                                  onClick={() => handleHistory(apt)}
+                                 className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
+                                 title="ইতিহাস"
+                               >
+                                 <FileText className="w-4 h-4" />
+                               </button>
+                               {effectiveRole !== 'appointment_taker' && (
+                               <button
+                                 onClick={() => handlePrintSlipFromTable(apt)}
+                                 className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors"
+                                 title="স্লিপ প্রিন্ট"
+                               >
+                                 <Printer className="w-4 h-4" />
+                               </button>
+                               )}
+                               {effectiveRole !== 'appointment_taker' && (
+                               <button
+                                 onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
+                                 className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
+                                 title="ইনভয়েস"
+                               >
+                                 <Receipt className="w-4 h-4" />
+                               </button>
+                               )}
                              </div>
                              )}
                           </div>
@@ -2014,7 +2027,9 @@ try {
               doctorDesignation={qrAppointment.doctors?.designation || ''}
               doctorSpecialty={qrAppointment.doctors?.specialty || ''}
             />
-            <Button onClick={() => handlePrintSlip(qrAppointment)} className="w-full">প্রিন্ট করুন</Button>
+            {effectiveRole !== 'appointment_taker' && (
+              <Button onClick={() => handlePrintSlip(qrAppointment)} className="w-full">প্রিন্ট করুন</Button>
+            )}
           </div>
         )}
       </Modal>

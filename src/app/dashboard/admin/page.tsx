@@ -32,7 +32,12 @@ export default function AdminDashboard() {
   const [recentAppointments, setRecentAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [scannedPatient, setScannedPatient] = useState<any>(null);
+  const [effectiveRole, setEffectiveRole] = useState<'admin' | 'appointment_taker'>('admin');
   const router = useRouter();
+
+  useEffect(() => {
+    setEffectiveRole(localStorage.getItem('userRole') === 'appointment_taker' ? 'appointment_taker' : 'admin');
+  }, []);
 
   const handleBarcodePatient = useCallback((patient: any) => {
     setScannedPatient(patient);
@@ -148,11 +153,17 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
-  const quickActions = [
-    { label: 'শিফট যোগ', action: () => { localStorage.setItem('openShiftModal', 'true'); router.push('/dashboard/admin/schedule'); }, icon: Clock, color: 'from-sky-500 to-sky-600' },
-    { label: 'ওয়াক-ইন', action: () => { localStorage.setItem('openAppointmentModal', 'true'); router.push('/dashboard/admin/appointments'); }, icon: Users, color: 'from-teal-500 to-teal-600' },
-    { label: 'ডাক্তার তালিকা', action: () => router.push('/dashboard/admin/doctors'), icon: Activity, color: 'from-purple-500 to-purple-600' },
-  ];
+  const isTaker = effectiveRole === 'appointment_taker';
+
+  const quickActions = isTaker
+    ? [
+        { label: 'ওয়াক-ইন', action: () => { localStorage.setItem('openAppointmentModal', 'true'); router.push('/dashboard/admin/appointments'); }, icon: Users, color: 'from-teal-500 to-teal-600' },
+      ]
+    : [
+        { label: 'শিফট যোগ', action: () => { localStorage.setItem('openShiftModal', 'true'); router.push('/dashboard/admin/schedule'); }, icon: Clock, color: 'from-sky-500 to-sky-600' },
+        { label: 'ওয়াক-ইন', action: () => { localStorage.setItem('openAppointmentModal', 'true'); router.push('/dashboard/admin/appointments'); }, icon: Users, color: 'from-teal-500 to-teal-600' },
+        { label: 'ডাক্তার তালিকা', action: () => router.push('/dashboard/admin/doctors'), icon: Activity, color: 'from-purple-500 to-purple-600' },
+      ];
 
   const handleQuickAction = (action: () => void) => {
     action();
@@ -160,7 +171,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <DashboardLayout role="admin">
+      <DashboardLayout role={effectiveRole}>
         <div className="space-y-6">
           <div className="h-8 w-48 bg-slate-200 rounded-lg animate-pulse" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -179,9 +190,9 @@ export default function AdminDashboard() {
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-2">
               <Activity className="w-5 h-5 text-primary-200" />
-              <span className="text-primary-200 text-sm font-medium">অ্যাডমিন প্যানেল</span>
+              <span className="text-primary-200 text-sm font-medium">{isTaker ? 'অ্যাপয়েন্টমেন্ট টেকার প্যানেল' : 'অ্যাডমিন প্যানেল'}</span>
             </div>
-            <h1 className="text-2xl font-bold mb-1">স্বাগতম, অ্যাডমিন!</h1>
+            <h1 className="text-2xl font-bold mb-1">{isTaker ? 'স্বাগতম!' : 'স্বাগতম, অ্যাডমিন!'}</h1>
             <p className="text-primary-100 text-sm">আজকের ক্লিনিক পরিসংখ্যান এবং কার্যক্রম</p>
           </div>
           <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-white/10 rounded-full blur-2xl animate-pulse" />
@@ -305,9 +316,11 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>আজকের ক্লিনিক ফ্লো</CardTitle>
-                <Link href="/dashboard/admin/schedule" className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
-                  সব দেখুন <ArrowRight className="w-4 h-4" />
-                </Link>
+                {!isTaker && (
+                  <Link href="/dashboard/admin/schedule" className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+                    সব দেখুন <ArrowRight className="w-4 h-4" />
+                  </Link>
+                )}
               </CardHeader>
               
               {todaySchedule.length > 0 ? (

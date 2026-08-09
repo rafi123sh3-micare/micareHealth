@@ -31,6 +31,7 @@ type NavItem = {
 
 type NavItems = {
   admin: NavItem[];
+  appointment_taker: NavItem[];
   doctor: NavItem[];
   patient: NavItem[];
 };
@@ -42,6 +43,10 @@ const NAV_ITEMS: NavItems = {
     { href: '/dashboard/admin/appointments', label: 'অ্যাপয়েন্টমেন্ট', icon: Calendar, color: 'from-orange-500 to-amber-500' },
     { href: '/dashboard/admin/reports', label: 'রিপোর্ট', icon: TrendingUp, color: 'from-amber-500 to-orange-500' },
     { href: '/dashboard/admin/about', label: 'About', icon: Info, color: 'from-slate-500 to-slate-600' },
+  ],
+  appointment_taker: [
+    { href: '/dashboard/admin', label: 'ড্যাশবোর্ড', icon: LayoutDashboard, color: 'from-blue-500 to-cyan-500' },
+    { href: '/dashboard/admin/appointments', label: 'অ্যাপয়েন্টমেন্ট', icon: Calendar, color: 'from-orange-500 to-amber-500' },
   ],
   doctor: [
     { href: '/dashboard/doctor', label: 'আজকের দিন', icon: LayoutDashboard, color: 'from-emerald-500 to-cyan-500' },
@@ -76,15 +81,22 @@ export default function DashboardLayout({
   useEffect(() => {
     const userRole = localStorage.getItem('userRole');
     const hasData = 
-      (role === 'admin' && localStorage.getItem('adminData')) ||
+      ((role === 'admin' || role === 'appointment_taker') && localStorage.getItem('adminData')) ||
       (role === 'doctor' && localStorage.getItem('doctorData')) ||
       (role === 'patient' && localStorage.getItem('patientData'));
     
     if (!userRole || !hasData) {
       toast.error('লগইন করুন');
       router.push('/login');
+      return;
     }
-  }, [role, router]);
+    // Appointment takers can only access the dashboard and the appointments page
+    if (userRole === 'appointment_taker' &&
+        pathname !== '/dashboard/admin' &&
+        pathname !== '/dashboard/admin/appointments') {
+      router.push('/dashboard/admin');
+    }
+  }, [role, router, pathname]);
 
   const handleNavClick = useCallback((href: string) => {
     startLoading();
@@ -95,6 +107,7 @@ export default function DashboardLayout({
   const getNavItems = (userRole: string): NavItem[] => {
     switch (userRole) {
       case 'admin': return NAV_ITEMS.admin;
+      case 'appointment_taker': return NAV_ITEMS.appointment_taker;
       case 'doctor': return NAV_ITEMS.doctor;
       case 'patient': return NAV_ITEMS.patient;
       default: return NAV_ITEMS.patient;
@@ -102,10 +115,10 @@ export default function DashboardLayout({
   };
 
   const items = getNavItems(role);
-  const [userData, setUserData] = useState<{ name: string; role: string; id: string }>({ name: role === 'admin' ? 'অ্যাডমিন' : role === 'doctor' ? 'ডাক্তার' : 'রোগী', role, id: '' });
+  const [userData, setUserData] = useState<{ name: string; role: string; id: string }>({ name: role === 'admin' || role === 'appointment_taker' ? 'অ্যাডমিন' : role === 'doctor' ? 'ডাক্তার' : 'রোগী', role, id: '' });
 
   useEffect(() => {
-    let name = role === 'admin' ? 'অ্যাডমিন' : '';
+    let name = role === 'admin' ? 'অ্যাডমিন' : role === 'appointment_taker' ? 'অ্যাপয়েন্টমেন্ট টেকার' : '';
     let id = '';
     
     if (role === 'doctor') {
@@ -116,8 +129,9 @@ export default function DashboardLayout({
       const patData = JSON.parse(localStorage.getItem('patientData') || '{}');
       name = patData.name || 'রোগী';
       id = patData.id || '';
-    } else if (role === 'admin') {
+    } else if (role === 'admin' || role === 'appointment_taker') {
       const adminData = JSON.parse(localStorage.getItem('adminData') || '{}');
+      name = adminData.name || (role === 'appointment_taker' ? 'অ্যাপয়েন্টমেন্ট টেকার' : 'অ্যাডমিন');
       id = adminData.id || '';
     }
     
@@ -132,13 +146,14 @@ export default function DashboardLayout({
   };
 
   const getInitial = (name: string) => {
-    if (!name) return role === 'admin' ? 'অ' : role === 'doctor' ? 'ড' : 'র';
+    if (!name) return (role === 'admin' || role === 'appointment_taker') ? 'অ' : role === 'doctor' ? 'ড' : 'র';
     return name.charAt(0);
   };
 
   const getRoleBadgeColor = () => {
     switch(role) {
       case 'admin': return 'bg-gradient-to-r from-blue-500 to-cyan-500';
+      case 'appointment_taker': return 'bg-gradient-to-r from-blue-500 to-cyan-500';
       case 'doctor': return 'bg-gradient-to-r from-emerald-500 to-teal-500';
       default: return 'bg-gradient-to-r from-violet-500 to-purple-500';
     }
@@ -147,6 +162,7 @@ export default function DashboardLayout({
   const getRoleLabel = () => {
     switch(role) {
       case 'admin': return 'অ্যাডমিন';
+      case 'appointment_taker': return 'অ্যাপয়েন্টমেন্ট টেকার';
       case 'doctor': return 'ডাক্তার';
       default: return 'রোগী';
     }
@@ -177,10 +193,10 @@ export default function DashboardLayout({
 
           <div className="flex items-center gap-2">
             {userData.id && (
-              <NotificationBell role={role as 'patient' | 'doctor' | 'admin'} userId={userData.id} />
+              <NotificationBell role={(role === 'appointment_taker' ? 'admin' : role) as 'patient' | 'doctor' | 'admin'} userId={userData.id} />
             )}
             <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 bg-slate-50/80 rounded-full border border-slate-200/50">
-              <Link href={`/dashboard/${role}/profile`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <Link href={role === 'appointment_taker' ? '/dashboard/admin' : `/dashboard/${role}/profile`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-sm font-medium shadow-sm">
                   {getInitial(userData.name)}
                 </div>
@@ -265,7 +281,7 @@ export default function DashboardLayout({
         {/* User Profile Card - Fixed at very bottom */}
         <div className="absolute bottom-0 left-0 right-0 p-3 bg-white border-t border-slate-100">
           <Link 
-            href={`/dashboard/${role}/profile`} 
+            href={role === 'appointment_taker' ? '/dashboard/admin' : `/dashboard/${role}/profile`} 
             className="flex items-center gap-3 p-3 bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-100 shadow-sm hover:opacity-80 transition-opacity"
           >
             <div className={`
@@ -377,7 +393,7 @@ export default function DashboardLayout({
         {/* Mobile Sidebar Footer */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-100 bg-white">
           <Link 
-            href={`/dashboard/${role}/profile`}
+            href={role === 'appointment_taker' ? '/dashboard/admin' : `/dashboard/${role}/profile`}
             className="block p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-100"
           >
             <div className="flex items-center gap-3">
