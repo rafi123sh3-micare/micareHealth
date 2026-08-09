@@ -179,12 +179,25 @@ export function generateReportPDF(data: ReportPDFData) {
       startY: tableStartY,
       head: headers,
       body: rows,
-      styles: { fontSize: 7.5, cellPadding: 2, overflow: 'ellipsize' },
+      styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
       headStyles: { fillColor: PRIMARY, textColor: [255, 255, 255], fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [235, 245, 255] },
+      // Fixed widths so money columns never get squeezed/truncated.
       columnStyles: {
-        0: { cellWidth: 10 },
-        7: { cellWidth: 25 },
+        0: { cellWidth: 8 },
+        1: { cellWidth: 26 },
+        2: { cellWidth: 27 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 9 },
+        5: { cellWidth: 10 },
+        6: { cellWidth: 24 },
+        7: { cellWidth: 15 },
+        8: { cellWidth: 11 },
+        9: { cellWidth: 22 },
+        10: { cellWidth: 21, halign: 'right' },
+        11: { cellWidth: 21, halign: 'right' },
+        12: { cellWidth: 25, halign: 'right' },
+        13: { cellWidth: 25, halign: 'right' },
       },
       margin: { left: 10, right: 10 },
       showFoot: 'lastPage',
@@ -205,7 +218,7 @@ export function generateReportPDF(data: ReportPDFData) {
   });
 }
 
-export function generateAppointmentPDF(data: PDFExportData) {
+export function generateAppointmentPDF(data: PDFExportData, fileName?: string) {
   loadLogos().then(({ header, watermark }) => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -263,7 +276,7 @@ export function generateAppointmentPDF(data: PDFExportData) {
 
     const tableStartY = headerEnd + 14;
 
-    const headers = [['#', 'Serial', 'Patient', 'Phone', 'Doctor', 'Department', 'Type', 'Status', 'Booked By', 'Created', 'Time', 'Fee Type']];
+    const headers = [['#', 'Serial', 'Patient', 'Phone', 'Doctor', 'Department', 'Type', 'Status', 'Booked By', 'Created', 'Fee Type']];
 
     const rows = data.appointments.map((apt, idx) => [
       idx + 1,
@@ -276,7 +289,6 @@ export function generateAppointmentPDF(data: PDFExportData) {
       apt.status || '-',
       apt.bookedBy || '-',
       formatDateTime(apt.createdAt),
-      apt.time || '-',
       apt.feeType || '-',
     ]);
 
@@ -300,8 +312,7 @@ export function generateAppointmentPDF(data: PDFExportData) {
         7: { cellWidth: 12 },
         8: { cellWidth: 22 },
         9: { cellWidth: 28 },
-        10: { cellWidth: 14 },
-        11: { cellWidth: 25 },
+        10: { cellWidth: 25 },
       },
       margin: { left: 10, right: 10 },
       showFoot: 'lastPage',
@@ -317,7 +328,11 @@ export function generateAppointmentPDF(data: PDFExportData) {
       (doc as any).setGState(new (doc as any).GState({ opacity: 1 }));
     }
 
-    const fileName = `Micare_Appointments_${data.date.replace(/\//g, '-')}.pdf`;
-    doc.save(fileName);
+    doc.save(fileName || `Micare_Appointments_${data.date.replace(/\//g, '-')}.pdf`);
   });
+}
+
+/** Same layout as the appointment export — lists only unpaid appointments (paid = 0 and refund = 0). */
+export function generateAbsentPDF(data: PDFExportData) {
+  generateAppointmentPDF(data, `Micare_Absent_${data.date.replace(/\//g, '-')}.pdf`);
 }

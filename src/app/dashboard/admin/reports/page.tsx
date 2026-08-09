@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { TrendingUp, Users, Calendar, Video, Wallet, Plus, X, Download } from 'lucide-react';
 import { supabase, FEE_TYPES, getFeeAmount } from '@/lib/supabase';
 import { generateReportPDF } from '@/lib/excel-export';
+import { compareBySerialNumber } from '@/lib/sms';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -47,6 +48,8 @@ export default function AdminReports() {
   const [monthlyCompleted, setMonthlyCompleted] = useState(0);
   const [dailyTeleconsult, setDailyTeleconsult] = useState(0);
   const [monthlyTeleconsult, setMonthlyTeleconsult] = useState(0);
+  const [dailyRefunded, setDailyRefunded] = useState(0);
+  const [monthlyRefunded, setMonthlyRefunded] = useState(0);
   const [statsViewMode, setStatsViewMode] = useState<'daily' | 'monthly'>('daily');
   const [moneyViewMode, setMoneyViewMode] = useState<'daily' | 'monthly'>('daily');
   const [showAddMoneyModal, setShowAddMoneyModal] = useState(false);
@@ -114,9 +117,9 @@ export default function AdminReports() {
     const firstDayStr = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
 
-    const filtered = statsViewMode === 'daily'
+    const filtered = (statsViewMode === 'daily'
       ? allApts.filter((a: any) => a.date === filterDate)
-      : allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
+      : allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr)).sort(compareBySerialNumber);
 
     generateReportPDF({
       title: `Micare Health - ${statsViewMode === 'daily' ? 'Daily' : 'Monthly'} Report`,
@@ -140,7 +143,7 @@ export default function AdminReports() {
           date: apt.date || '-',
           feeType: feeTypeLabel,
           advance: apt.advance || 0,
-          paid: apt.paid || 0,
+          paid: Math.max(0, (apt.paid || 0) - (apt.refunded || 0)),
           refunded: apt.refunded || 0,
           netPayble: getFeeAmount(apt.fee_type) - (apt.refunded || 0),
           due: (getFeeAmount(apt.fee_type) - (apt.refunded || 0)) - (apt.paid || 0),
@@ -170,7 +173,7 @@ export default function AdminReports() {
     const monthPatients = new Set(monthAll.map((a: any) => a.patient_id)).size;
 
     // Earnings — sum net (paid - refunded) from all appointments, regardless of status
-    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.paid) || 0), 0);
+    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + Math.max(0, (Number(a.paid) || 0) - (Number(a.refunded) || 0)), 0);
 
     const todayAllForEarnings = allApts.filter((a: any) => a.date === filterDate);
     const monthAllForEarnings = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
@@ -184,6 +187,11 @@ export default function AdminReports() {
     setMonthlyCompleted(calcEarnings(monthCompleted));
     setDailyTeleconsult(calcEarnings(todayTele));
     setMonthlyTeleconsult(calcEarnings(monthTele));
+
+    // Refunded amounts
+    const calcRefunded = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.refunded) || 0), 0);
+    setDailyRefunded(calcRefunded(todayAllForEarnings));
+    setMonthlyRefunded(calcRefunded(monthAllForEarnings));
 
     // Added money
     const dAdded = addedMoneyData.filter((t: any) => t.date === filterDate).reduce((sum: number, t: any) => sum + Number(t.amount), 0);
@@ -406,6 +414,10 @@ export default function AdminReports() {
                     <span className="text-emerald-100">যোগ করা টাকা</span>
                     <span className="font-semibold">৳{dailyAddedMoney.toLocaleString()}</span>
                   </div>
+                  <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
+                    <span className="text-emerald-100">রিফান্ড (Refund)</span>
+                    <span className="font-semibold text-red-300">৳{dailyRefunded.toLocaleString()}</span>
+                  </div>
                   <div className="flex items-center justify-between bg-white/20 rounded-lg p-3">
                     <span className="text-white font-medium">মোট</span>
                     <span className="text-white font-bold">৳{(dailyEarnings + dailyAddedMoney).toLocaleString()}</span>
@@ -429,6 +441,12 @@ export default function AdminReports() {
                     <span className="text-emerald-100">যোগ করা টাকা</span>
                     <span className="font-semibold">
                       ৳{monthlyAddedMoney.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
+                    <span className="text-emerald-100">রিফান্ড (Refund)</span>
+                    <span className="font-semibold text-red-300">
+                      ৳{monthlyRefunded.toLocaleString()}
                     </span>
                   </div>
                   <div className="flex items-center justify-between bg-white/20 rounded-lg p-3">

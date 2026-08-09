@@ -9,7 +9,7 @@ import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
 import { supabase, supabase1, generateSerialNumber, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
-import { generateAppointmentPDF } from '@/lib/excel-export';
+import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { setCache, getCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
@@ -173,6 +173,7 @@ export default function AdminAppointments() {
   const [editInvoiceApt, setEditInvoiceApt] = useState<any>(null);
   const [editPaid, setEditPaid] = useState(0);
   const [editRefunded, setEditRefunded] = useState(0);
+  const [editOriginalPaid, setEditOriginalPaid] = useState(0);
   const [savingInvoice, setSavingInvoice] = useState(false);
 
   // Edit patient state (full walk-in model)
@@ -516,32 +517,44 @@ export default function AdminAppointments() {
     return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  const mapAptForExport = (apt: any) => {
+    const serialSuffix = apt.serial_number?.slice(-1) || '';
+    const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
+    const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find(f => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
+    return {
+      serial: apt.serial_number || '-',
+      patientName: apt.patientName || 'রোগী',
+      phone: apt.patientPhone || apt.patients?.phone || '',
+      age: apt.patientAge || apt.patients?.age || '-',
+      gender: apt.patientGender === 'male' ? 'Male' : apt.patientGender === 'female' ? 'Female' : apt.patientGender || '-',
+      doctor: apt.doctorName || '-',
+      department: apt.departmentName || 'General',
+      type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
+      status: apt.displayStatus === 'confirmed' ? 'Confirmed' : apt.displayStatus === 'completed' ? 'Completed' : apt.displayStatus === 'pending' ? 'Pending' : apt.displayStatus === 'cancelled' ? 'Cancelled' : apt.displayStatus || '-',
+      time: apt.time || '-',
+      date: apt.date || '-',
+      feeType: feeTypeLabel,
+      bookedBy: apt.booked_by || '-',
+      createdAt: apt.created_at || '',
+    };
+  };
+
   function handleExportPDF() {
     const dateStr = (filterDate || filteredAppointments[0]?.date || '').replace(/-/g, '/');
     generateAppointmentPDF({
       title: `Micare Health - Appointment Report`,
       date: dateStr,
-      appointments: filteredAppointments.map((apt, idx) => {
-        const serialSuffix = apt.serial_number?.slice(-1) || '';
-        const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
-        const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find(f => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
-        return {
-          serial: apt.serial_number || '-',
-          patientName: apt.patientName || 'রোগী',
-          phone: apt.patientPhone || apt.patients?.phone || '',
-          age: apt.patientAge || apt.patients?.age || '-',
-          gender: apt.patientGender === 'male' ? 'Male' : apt.patientGender === 'female' ? 'Female' : apt.patientGender || '-',
-          doctor: apt.doctorName || '-',
-          department: apt.departmentName || 'General',
-          type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
-          status: apt.displayStatus === 'confirmed' ? 'Confirmed' : apt.displayStatus === 'completed' ? 'Completed' : apt.displayStatus === 'pending' ? 'Pending' : apt.displayStatus === 'cancelled' ? 'Cancelled' : apt.displayStatus || '-',
-          time: apt.time || '-',
-          date: apt.date || '-',
-          feeType: feeTypeLabel,
-          bookedBy: apt.booked_by || '-',
-          createdAt: apt.created_at || '',
-        };
-      }),
+      appointments: filteredAppointments.map(mapAptForExport),
+    });
+  }
+
+  function handleExportAbsentPDF() {
+    const dateStr = (filterDate || filteredAppointments[0]?.date || '').replace(/-/g, '/');
+    const absent = filteredAppointments.filter((apt: any) => (apt.paid || 0) === 0 && (apt.refunded || 0) === 0);
+    generateAbsentPDF({
+      title: `Micare Health - Absent Report`,
+      date: dateStr,
+      appointments: absent.map(mapAptForExport),
     });
   }
 
@@ -1288,6 +1301,8 @@ try {
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
     const paidAmt = apt.paid || 0;
     const refundedAmt = apt.refunded || 0;
+    const netPaid = Math.max(0, paidAmt - refundedAmt);
+    const netPayable = feeAmt - refundedAmt;
 
     generateCashMemoPrint({
       billNo,
@@ -1307,12 +1322,12 @@ try {
         { name: `${feeLabel} Fee (${apt.doctors?.name || apt.doctorName || 'Doctor'})`, amount: feeAmt },
       ],
       subTotal: feeAmt,
-      netPayable: feeAmt - refundedAmt,
-      advance: paidAmt,
+      netPayable,
+      advance: netPaid,
       refund: refundedAmt,
-      due: (feeAmt - refundedAmt) - paidAmt,
-      inWords: numberToWords(feeAmt - refundedAmt),
-      isPaid: (feeAmt - refundedAmt - paidAmt) <= 0,
+      due: netPayable - netPaid,
+      inWords: numberToWords(netPayable),
+      isPaid: (netPayable - netPaid) <= 0,
       paymentLog: [
         {
           paymentType: feeLabel,
@@ -1331,11 +1346,11 @@ try {
     try {
       const { error } = await supabase
         .from('appointments')
-        .update({ paid: editPaid, refunded: editRefunded })
+        .update({ paid: editOriginalPaid, refunded: editRefunded })
         .eq('id', editInvoiceApt.id);
       if (error) throw error;
 
-      const updatedApt = { ...editInvoiceApt, paid: editPaid, refunded: editRefunded };
+      const updatedApt = { ...editInvoiceApt, paid: editOriginalPaid, refunded: editRefunded };
       setAppointments(prev => prev.map(a => a.id === updatedApt.id ? updatedApt : a));
 
       setShowInvoiceEditModal(false);
@@ -1375,6 +1390,7 @@ try {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={handleExportPDF}><Download className="w-5 h-5" /> PDF</Button>
+            <Button variant="secondary" onClick={handleExportAbsentPDF} title="যারা পরিশোধ করেনি (Paid 0 / Refund 0)"><Download className="w-5 h-5" /> Absent PDF</Button>
             <Button onClick={() => setShowWalkinModal(true)}>
               <Plus className="w-5 h-5" /> নতুন অ্যাপয়েন্টমেন্ট
             </Button>
@@ -1552,7 +1568,7 @@ try {
                         {getStatusBadge(apt.status, apt.displayStatus)}
                       </td>
                       )}
-                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{Math.max(0, (apt.paid || 0) - (apt.refunded || 0))}</td>
                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
                        <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
                        <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
@@ -1656,7 +1672,7 @@ try {
                                     <Printer className="w-4 h-4" />
                                   </button>
                                   <button
-                                    onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
+                                    onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
                                     className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
                                     title="ইনভয়েস"
                                   >
@@ -1711,7 +1727,7 @@ try {
                                   <Printer className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
+                                  onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }}
                                   className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors"
                                   title="ইনভয়েস"
                                 >
@@ -1748,13 +1764,17 @@ try {
 
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid − Refund)</label>
                 <input
                   type="number"
                   min={0}
                   value={editPaid || ''}
                   placeholder="০"
-                  onChange={(e) => setEditPaid(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setEditPaid(val);
+                    setEditOriginalPaid(val + (editRefunded || 0));
+                  }}
                   className="input w-full text-center font-semibold"
                 />
               </div>
@@ -1765,7 +1785,11 @@ try {
                   min={0}
                   value={editRefunded || ''}
                   placeholder="০"
-                  onChange={(e) => setEditRefunded(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setEditRefunded(val);
+                    setEditPaid(Math.max(0, (editOriginalPaid || 0) - val));
+                  }}
                   className="input w-full text-center font-semibold"
                 />
               </div>
@@ -1773,6 +1797,9 @@ try {
                 <span className="text-slate-500">নেট (Net):</span>
                 <span className="font-bold text-primary-600">৳{getFeeAmount(editInvoiceApt.fee_type) - (editRefunded || 0)}</span>
               </div>
+              <p className="col-span-2 text-[11px] text-slate-400 leading-snug">
+                Refund দিলে পরিশোধ (Paid) স্বয়ংক্রিয়ভাবে হিসাব হবে <span className="font-medium text-slate-500">Paid − Refund</span>
+              </p>
             </div>
 
             <div className="flex gap-3 pt-2">

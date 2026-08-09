@@ -10,7 +10,7 @@ import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
 import { supabase, supabase1, generateSerialNumber, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
-import { generateAppointmentPDF } from '@/lib/excel-export';
+import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { Modal } from '@/components/ui/Modal';
@@ -159,6 +159,7 @@ export default function DoctorAppointments() {
   const [editInvoiceApt, setEditInvoiceApt] = useState<any>(null);
   const [editPaid, setEditPaid] = useState(0);
   const [editRefunded, setEditRefunded] = useState(0);
+  const [editOriginalPaid, setEditOriginalPaid] = useState(0);
   const [savingInvoice, setSavingInvoice] = useState(false);
 
   // Edit patient state
@@ -438,6 +439,28 @@ const statusOrder: Record<string, number> = {
     return date.toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  const mapAptForExport = (apt: any, doctorName?: string, deptFromStorage?: string) => {
+    const serialSuffix = apt.serial_number?.slice(-1) || '';
+    const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
+    const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find(f => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
+    return {
+      serial: apt.serial_number || '-',
+      patientName: apt.patientName || 'রোগী',
+      phone: apt.patientPhone || apt.patients?.phone || '',
+      age: apt.patientAge || apt.patients?.age || '-',
+      gender: apt.patientGender === 'male' ? 'Male' : apt.patientGender === 'female' ? 'Female' : apt.patientGender || '-',
+      doctor: apt.doctorName || doctorName || '-',
+      department: apt.departmentName || deptFromStorage,
+      type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
+      status: apt.displayStatus === 'confirmed' ? 'Confirmed' : apt.displayStatus === 'completed' ? 'Completed' : apt.displayStatus === 'pending' ? 'Pending' : apt.displayStatus === 'cancelled' ? 'Cancelled' : apt.displayStatus || '-',
+      time: apt.time || '-',
+      date: apt.date || '-',
+      feeType: feeTypeLabel,
+      bookedBy: apt.booked_by || '-',
+      createdAt: apt.created_at || '',
+    };
+  };
+
   function handleExportPDF() {
     const dateStr = (filterDate || filteredAppointments[0]?.date || '').replace(/-/g, '/');
     const doctorData = JSON.parse(localStorage.getItem('doctorData') || 'null');
@@ -445,27 +468,19 @@ const statusOrder: Record<string, number> = {
     generateAppointmentPDF({
       title: `Micare Health - Appointment Report`,
       date: dateStr,
-      appointments: filteredAppointments.map((apt, idx) => {
-        const serialSuffix = apt.serial_number?.slice(-1) || '';
-        const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
-        const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find(f => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
-        return {
-          serial: apt.serial_number || '-',
-          patientName: apt.patientName || 'রোগী',
-          phone: apt.patientPhone || apt.patients?.phone || '',
-          age: apt.patientAge || apt.patients?.age || '-',
-          gender: apt.patientGender === 'male' ? 'Male' : apt.patientGender === 'female' ? 'Female' : apt.patientGender || '-',
-          doctor: apt.doctorName || doctorData?.name || '-',
-          department: apt.departmentName || deptFromStorage,
-          type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
-          status: apt.displayStatus === 'confirmed' ? 'Confirmed' : apt.displayStatus === 'completed' ? 'Completed' : apt.displayStatus === 'pending' ? 'Pending' : apt.displayStatus === 'cancelled' ? 'Cancelled' : apt.displayStatus || '-',
-          time: apt.time || '-',
-          date: apt.date || '-',
-          feeType: feeTypeLabel,
-          bookedBy: apt.booked_by || '-',
-          createdAt: apt.created_at || '',
-        };
-      }),
+      appointments: filteredAppointments.map((apt) => mapAptForExport(apt, doctorData?.name, deptFromStorage)),
+    });
+  }
+
+  function handleExportAbsentPDF() {
+    const dateStr = (filterDate || filteredAppointments[0]?.date || '').replace(/-/g, '/');
+    const doctorData = JSON.parse(localStorage.getItem('doctorData') || 'null');
+    const deptFromStorage = doctorData?.specialization || doctorData?.department || 'General';
+    const absent = filteredAppointments.filter((apt: any) => (apt.paid || 0) === 0 && (apt.refunded || 0) === 0);
+    generateAbsentPDF({
+      title: `Micare Health - Absent Report`,
+      date: dateStr,
+      appointments: absent.map((apt) => mapAptForExport(apt, doctorData?.name, deptFromStorage)),
     });
   }
 
@@ -1176,6 +1191,8 @@ const statusOrder: Record<string, number> = {
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
     const paidAmt = apt.paid || 0;
     const refundedAmt = apt.refunded || 0;
+    const netPaid = Math.max(0, paidAmt - refundedAmt);
+    const netPayable = feeAmt - refundedAmt;
 
     generateCashMemoPrint({
       billNo,
@@ -1195,12 +1212,12 @@ const statusOrder: Record<string, number> = {
         { name: `${feeLabel} Fee (${apt.doctors?.name || apt.doctorName || 'Doctor'})`, amount: feeAmt },
       ],
       subTotal: feeAmt,
-      netPayable: feeAmt - refundedAmt,
-      advance: paidAmt,
+      netPayable,
+      advance: netPaid,
       refund: refundedAmt,
-      due: (feeAmt - refundedAmt) - paidAmt,
-      inWords: numberToWords(feeAmt - refundedAmt),
-      isPaid: (feeAmt - refundedAmt - paidAmt) <= 0,
+      due: netPayable - netPaid,
+      inWords: numberToWords(netPayable),
+      isPaid: (netPayable - netPaid) <= 0,
       paymentLog: [
         {
           paymentType: feeLabel,
@@ -1219,11 +1236,11 @@ const statusOrder: Record<string, number> = {
     try {
       const { error } = await supabase
         .from('appointments')
-        .update({ paid: editPaid, refunded: editRefunded })
+        .update({ paid: editOriginalPaid, refunded: editRefunded })
         .eq('id', editInvoiceApt.id);
       if (error) throw error;
 
-      const updatedApt = { ...editInvoiceApt, paid: editPaid, refunded: editRefunded };
+      const updatedApt = { ...editInvoiceApt, paid: editOriginalPaid, refunded: editRefunded };
       setAppointments(prev => prev.map(a => a.id === updatedApt.id ? updatedApt : a));
 
       setShowInvoiceEditModal(false);
@@ -1259,6 +1276,7 @@ const statusOrder: Record<string, number> = {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={handleExportPDF}><Download className="w-5 h-5" /> PDF</Button>
+            <Button variant="secondary" onClick={handleExportAbsentPDF} title="যারা পরিশোধ করেনি (Paid 0 / Refund 0)"><Download className="w-5 h-5" /> Absent PDF</Button>
             <Button onClick={() => setShowWalkinModal(true)}><Plus className="w-5 h-5" /> নতুন অ্যাপয়েন্টমেন্ট</Button>
           </div>
         </div>
@@ -1379,7 +1397,7 @@ const statusOrder: Record<string, number> = {
                       {showCoreCols && (
                       <td className="px-4 py-3">{getStatusBadge(apt.status, apt.displayStatus)}</td>
                       )}
-                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{apt.paid || 0}</td>
+                      <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{Math.max(0, (apt.paid || 0) - (apt.refunded || 0))}</td>
                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
                        <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
                        <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
@@ -1414,7 +1432,7 @@ const statusOrder: Record<string, number> = {
                               <button onClick={() => handleHistory(apt)} className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="ইতিহাস"><FileText className="w-4 h-4" /></button>
                               <button onClick={() => handlePrintSlipFromTable(apt)} className="p-2 text-slate-500 hover:bg-slate-50 rounded-lg transition-colors" title="স্লিপ প্রিন্ট"><Printer className="w-4 h-4" /></button>
                               <button onClick={() => handleEditPatient(apt)} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="অ্যাপয়েন্টমেন্ট সম্পাদনা"><Pencil className="w-4 h-4" /></button>
-                              <button onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
+                              <button onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
                             </>
                           )}
                           {apt.status === 'completed' && (
@@ -1423,7 +1441,7 @@ const statusOrder: Record<string, number> = {
                               <button onClick={() => handleVitals(apt)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="ভাইটালস"><Heart className="w-4 h-4" /></button>
                               <button onClick={() => handleOpenSMS(apt)} className="p-2 text-sky-500 hover:bg-sky-50 rounded-lg transition-colors" title="SMS পাঠান"><MessageCircle className="w-4 h-4" /></button>
                               <button onClick={() => handleEditPatient(apt)} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="অ্যাপয়েন্টমেন্ট সম্পাদনা"><Pencil className="w-4 h-4" /></button>
-                              <button onClick={() => { setEditInvoiceApt(apt); setEditPaid(apt.paid || 0); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
+                              <button onClick={() => { setEditInvoiceApt(apt); setEditOriginalPaid(apt.paid || 0); setEditPaid(Math.max(0, (apt.paid || 0) - (apt.refunded || 0))); setEditRefunded(apt.refunded || 0); setShowInvoiceEditModal(true); }} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="ইনভয়েস"><Receipt className="w-4 h-4" /></button>
                             </div>
                           )}
                         </div>
@@ -1455,13 +1473,17 @@ const statusOrder: Record<string, number> = {
 
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid − Refund)</label>
                 <input
                   type="number"
                   min={0}
                   value={editPaid || ''}
                   placeholder="০"
-                  onChange={(e) => setEditPaid(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setEditPaid(val);
+                    setEditOriginalPaid(val + (editRefunded || 0));
+                  }}
                   className="input w-full text-center font-semibold"
                 />
               </div>
@@ -1472,7 +1494,11 @@ const statusOrder: Record<string, number> = {
                   min={0}
                   value={editRefunded || ''}
                   placeholder="০"
-                  onChange={(e) => setEditRefunded(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setEditRefunded(val);
+                    setEditPaid(Math.max(0, (editOriginalPaid || 0) - val));
+                  }}
                   className="input w-full text-center font-semibold"
                 />
               </div>
@@ -1480,6 +1506,9 @@ const statusOrder: Record<string, number> = {
                 <span className="text-slate-500">নেট (Net):</span>
                 <span className="font-bold text-primary-600">৳{getFeeAmount(editInvoiceApt.fee_type) - (editRefunded || 0)}</span>
               </div>
+              <p className="col-span-2 text-[11px] text-slate-400 leading-snug">
+                Refund দিলে পরিশোধ (Paid) স্বয়ংক্রিয়ভাবে হিসাব হবে <span className="font-medium text-slate-500">Paid − Refund</span>
+              </p>
             </div>
 
             <div className="flex gap-3 pt-2">

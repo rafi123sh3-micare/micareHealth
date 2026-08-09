@@ -265,7 +265,10 @@ const statusOrder: Record<string, number> = {
     const feeAmt = getFeeAmount(apt.fee_type);
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
     const advancePaid = apt.paid || 0;
-    const dueAmt = Math.max(0, feeAmt - (apt.refunded || 0) - advancePaid);
+    const refundedAmt = apt.refunded || 0;
+    const netPaid = Math.max(0, advancePaid - refundedAmt);
+    const netPayable = feeAmt - refundedAmt;
+    const dueAmt = Math.max(0, netPayable - netPaid);
 
     generateCashMemoPrint({
       billNo,
@@ -285,12 +288,12 @@ const statusOrder: Record<string, number> = {
         { name: `${feeLabel} Fee (${apt.doctor || 'Doctor'})`, amount: feeAmt },
       ],
       subTotal: feeAmt,
-      netPayable: feeAmt - (apt.refunded || 0),
-      advance: advancePaid,
-      refund: apt.refunded || 0,
+      netPayable,
+      advance: netPaid,
+      refund: refundedAmt,
       due: dueAmt,
-      inWords: numberToWords(feeAmt - (apt.refunded || 0)),
-      isPaid: (feeAmt - (apt.refunded || 0) - advancePaid) <= 0,
+      inWords: numberToWords(netPayable),
+      isPaid: (netPayable - netPaid) <= 0,
       paymentLog: [
         {
           paymentType: feeLabel,
