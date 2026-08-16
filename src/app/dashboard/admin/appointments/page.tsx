@@ -999,10 +999,9 @@ try {
       const dateChanged = editPatientApt.date !== editApptForm.date;
       const feeChanged = editPatientApt.fee_type !== editApptForm.fee_type;
       const typeChanged = editPatientApt.type !== type;
-      const phoneChanged = editPatientForm.phone !== (editPatientApt.patients?.phone || '');
 
       let newSerial = editPatientApt.serial_number || null;
-      if ((doctorChanged || dateChanged || feeChanged || typeChanged || phoneChanged) && editPatientApt.status === 'confirmed') {
+      if ((doctorChanged || dateChanged || feeChanged || typeChanged) && editPatientApt.status === 'confirmed') {
         newSerial = await generateSerialNumber(
           editApptForm.doctor_id,
           editApptForm.date,
