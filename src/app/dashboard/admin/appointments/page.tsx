@@ -995,23 +995,7 @@ try {
       const scheduleStart = resolveScheduleStart(editSchedules, editApptForm.date);
       const type = editApptForm.type === 'teleconsult' ? 'teleconsult' : 'appointment';
 
-      const doctorChanged = editPatientApt.doctor_id !== editApptForm.doctor_id;
-      const dateChanged = editPatientApt.date !== editApptForm.date;
-      const feeChanged = editPatientApt.fee_type !== editApptForm.fee_type;
-      const typeChanged = editPatientApt.type !== type;
-
-      let newSerial = editPatientApt.serial_number || null;
-      if ((doctorChanged || dateChanged || feeChanged || typeChanged) && editPatientApt.status === 'confirmed') {
-        newSerial = await generateSerialNumber(
-          editApptForm.doctor_id,
-          editApptForm.date,
-          type,
-          editApptForm.fee_type,
-          editPatientForm.phone,
-          editPatientApt.id
-        );
-      }
-
+      // Serial number is permanent once assigned — never regenerate on edit
       const updateData: any = {
         doctor_id: editApptForm.doctor_id,
         date: editApptForm.date,
@@ -1024,7 +1008,6 @@ try {
         booked_by: editApptForm.booked_by,
         time: scheduleStart || editPatientApt.time || '09:00',
       };
-      if (newSerial) updateData.serial_number = newSerial;
 
       const { error: aptError } = await supabase
         .from('appointments')
@@ -1047,7 +1030,6 @@ try {
         patient_mobile: editPatientForm.phone,
         booked_by: editApptForm.booked_by,
       });
-      if (newSerial) updated.serial_number = newSerial;
       if (updated.doctorName !== undefined) {
         updated.doctorName = doctors.find(d => d.id === editApptForm.doctor_id)?.name || updated.doctorName;
         updated.departmentName = doctors.find(d => d.id === editApptForm.doctor_id)?.specialization || updated.departmentName;

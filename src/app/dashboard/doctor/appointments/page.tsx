@@ -942,22 +942,7 @@ const statusOrder: Record<string, number> = {
       const scheduleStart = resolveScheduleStart(editSchedules, editApptForm.date);
       const type = editApptForm.type === 'teleconsult' ? 'teleconsult' : 'appointment';
 
-      const dateChanged = editPatientApt.date !== editApptForm.date;
-      const feeChanged = editPatientApt.fee_type !== editApptForm.fee_type;
-      const typeChanged = editPatientApt.type !== type;
-
-      let newSerial = editPatientApt.serial_number || null;
-      if ((dateChanged || feeChanged || typeChanged) && editPatientApt.status === 'confirmed') {
-        newSerial = await generateSerialNumber(
-          editPatientApt.doctor_id,
-          editApptForm.date,
-          type,
-          editApptForm.fee_type,
-          editPatientForm.phone,
-          editPatientApt.id
-        );
-      }
-
+      // Serial number is permanent once assigned — never regenerate on edit
       const updateData: any = {
         date: editApptForm.date,
         type,
@@ -969,7 +954,6 @@ const statusOrder: Record<string, number> = {
         booked_by: editApptForm.booked_by,
         time: scheduleStart || editPatientApt.time || '09:00',
       };
-      if (newSerial) updateData.serial_number = newSerial;
 
       const { error: aptError } = await supabase
         .from('appointments')
@@ -991,7 +975,6 @@ const statusOrder: Record<string, number> = {
         patient_mobile: editPatientForm.phone,
         booked_by: editApptForm.booked_by,
       });
-      if (newSerial) updated.serial_number = newSerial;
       setAppointments(prev => prev.map(a => a.id === updated.id ? updated : a));
       toast.success('অ্যাপয়েন্টমেন্ট আপডেট হয়েছে');
       setShowEditPatientModal(false);
