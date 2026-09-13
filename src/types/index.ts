@@ -57,7 +57,7 @@ export interface Appointment {
   notes?: string;
   teleconsult_link?: string;
   created_at: string;
-  serial_number?: number;
+  serial_number?: string;
 }
 
 export interface TeleconsultSession {
