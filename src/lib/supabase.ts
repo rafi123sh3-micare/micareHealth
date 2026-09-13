@@ -29,9 +29,8 @@ function getLast4PhoneDigits(phone?: string): string {
 }
 
 export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string, excludeAppointmentId?: string): Promise<string> {
-  // The database function reserves the next queue position atomically.  This is
-  // essential: counting rows in the browser allows two receptionists to both
-  // receive (for example) DR01-001 at the same time.
+  // The database returns the next position in the current daily queue. A
+  // database trigger then re-sequences the active list after queue changes.
   const { data: reservedSerial, error: reservationError } = await supabase.rpc(
     'reserve_appointment_serial',
     {
@@ -47,16 +46,15 @@ export async function generateSerialNumber(doctorId: string, date: string, type:
     return reservedSerial;
   }
 
-  // Compatibility fallback for installations where the accompanying SQL
-  // migration has not been applied yet.  Unlike the former status-based count,
-  // this uses the greatest existing queue number across *all* appointments, so
-  // cancelled or pending appointments can never make a serial reusable.
+  // Compatibility fallback for installations where the SQL migration has not
+  // been applied yet.
   console.warn('Serial reservation RPC is unavailable; using compatibility fallback.', reservationError);
   let serialQuery = supabase
     .from('appointments')
     .select('id, serial_number')
     .eq('doctor_id', doctorId)
-    .eq('date', date);
+    .eq('date', date)
+    .in('status', ['confirmed', 'completed']);
   if (excludeAppointmentId) {
     serialQuery = serialQuery.neq('id', excludeAppointmentId);
   }
@@ -68,14 +66,10 @@ export async function generateSerialNumber(doctorId: string, date: string, type:
   const doctorCode = doctorResult.data?.doctor_code || 'DR01';
   const typeSuffix = type === 'teleconsult' ? 'T' : 'A';
   const feePrefix = FEE_TYPE_PREFIX[feeType || ''] || '';
-  const highestSequence = (serialResult.data || []).reduce((highest, appointment) => {
-    const match = appointment.serial_number?.match(/-(\d+)/);
-    const sequence = match ? Number.parseInt(match[1], 10) : 0;
-    return Number.isFinite(sequence) ? Math.max(highest, sequence) : highest;
-  }, 0);
+  const currentQueueSize = serialResult.data?.length || 0;
   const phoneSuffix = getLast4PhoneDigits(phone);
 
-  return `${doctorCode}-${String(highestSequence + 1).padStart(3, '0')}${typeSuffix}${feePrefix}${phoneSuffix}`;
+  return `${doctorCode}-${String(currentQueueSize + 1).padStart(3, '0')}${typeSuffix}${feePrefix}${phoneSuffix}`;
 }
 
 export const FEE_TYPES = [
