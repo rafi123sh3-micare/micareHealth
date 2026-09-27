@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { Search, Calendar, Clock, Video, CheckCircle, X, FileText, ChevronDown, ChevronRight, ChevronLeft, Upload, Check, Plus, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
+import { Search, Calendar, Clock, Video, X, FileText, ChevronDown, ChevronRight, ChevronLeft, Upload, Check, Plus, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
@@ -724,15 +724,6 @@ const statusOrder: Record<string, number> = {
     },
   });
 
-  const handleComplete = async (apt: any) => {
-    const { error } = await supabase.from('appointments').update({ status: 'completed' }).eq('id', apt.id);
-    if (!error) {
-      await supabase.from('patients').update({ status: 'completed' }).eq('id', apt.patient_id);
-      toast.success('অ্যাপয়েন্টমেন্ট সম্পন্ন হয়েছে');
-      loadAppointments();
-    }
-  };
-
   const handleAddWalkin = async () => {
     const doctorData = JSON.parse(localStorage.getItem('doctorData') || 'null');
     if (!walkinPatient.name) { toast.error('রোগীর নাম লিখুন'); return; }
@@ -1324,7 +1315,6 @@ const statusOrder: Record<string, number> = {
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">পরিশোধ</th>                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Refund</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Due</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">নেট</th>
-                  <th className="px-4 py-3 text-center font-semibold text-slate-600">সম্পন্ন</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600"></th>
                 </tr>
               </thead>
@@ -1383,15 +1373,6 @@ const statusOrder: Record<string, number> = {
                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
                        <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
                        <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
-                      <td className="px-4 py-3 text-center">
-                        {apt.status !== 'completed' && apt.status !== 'cancelled' ? (
-                          <button onClick={() => handleComplete(apt)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="সম্পন্ন করুন">
-                            <CheckCircle className="w-5 h-5" />
-                          </button>
-                        ) : (
-                          <div className="flex justify-center"><CheckCircle className="w-5 h-5 text-emerald-400 opacity-50" /></div>
-                        )}
-                      </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {apt.status !== 'completed' && (
@@ -1401,9 +1382,6 @@ const statusOrder: Record<string, number> = {
                                   <button onClick={() => handleApprove(apt, apt.status)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="নিশ্চিত করুন"><Check className="w-4 h-4" /></button>
                                   <button onClick={() => handleReject(apt)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="বাতিল করুন"><X className="w-4 h-4" /></button>
                                 </>
-                              )}
-                              {apt.status === 'confirmed' && (
-                                <button onClick={() => handleApprove(apt, apt.status)} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="অপেক্ষায় করুন"><Clock className="w-4 h-4" /></button>
                               )}
                               {apt.status === 'cancelled' && (
                                 <button onClick={() => handleApprove(apt, apt.status)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="পুনরুদ্ধার করুন"><Check className="w-4 h-4" /></button>

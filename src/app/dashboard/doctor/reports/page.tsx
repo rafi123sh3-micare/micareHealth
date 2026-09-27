@@ -2,10 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
-import { TrendingUp, Users, Calendar, Video, Wallet } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { Wallet, Download } from 'lucide-react';
+import { supabase, FEE_TYPES, getFeeAmount } from '@/lib/supabase';
+import { generateReportPDF, generateAbsentPDF } from '@/lib/excel-export';
+import { compareBySerialNumber } from '@/lib/sms';
 import { Card } from '@/components/ui/Card';
+import ReportPeriodFilter, { defaultDayPeriod, isInPeriod, type ReportPeriod } from '@/components/ReportPeriodFilter';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -36,91 +40,143 @@ export default function DoctorReports() {
 
   const [stats, setStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dailyEarnings, setDailyEarnings] = useState(0);
-  const [monthlyEarnings, setMonthlyEarnings] = useState(0);
-  const [dailyCompleted, setDailyCompleted] = useState(0);
-  const [monthlyCompleted, setMonthlyCompleted] = useState(0);
-  const [dailyTeleconsult, setDailyTeleconsult] = useState(0);
-  const [monthlyTeleconsult, setMonthlyTeleconsult] = useState(0);
-  const [statsViewMode, setStatsViewMode] = useState<'daily' | 'monthly'>('daily');
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [inPersonMoney, setInPersonMoney] = useState(0);
+  const [teleconsultMoney, setTeleconsultMoney] = useState(0);
 
-  const [filterDate, setFilterDate] = useState(getLocalDateString());
-  const [filterMonth, setFilterMonth] = useState(() => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const [period, setPeriod] = useState<ReportPeriod>(() => defaultDayPeriod(getLocalDateString()));
 
   const [allApts, setAllApts] = useState<any[]>([]);
-  const [doctorId, setDoctorId] = useState<string | null>(null);
 
   useEffect(() => {
     loadAllData();
   }, []);
 
   useEffect(() => {
-    if (allApts.length > 0) {
+    if (dataLoaded) {
       calculateStats();
     }
-  }, [statsViewMode, filterDate, filterMonth, allApts]);
-
-  useEffect(() => {
-    if (filterDate) {
-      const dateObj = new Date(filterDate);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      setFilterMonth(`${year}-${month}`);
-    }
-  }, [filterDate]);
+  }, [period, allApts, dataLoaded]);
 
   async function loadAllData() {
     setLoading(true);
     const doctorData = JSON.parse(localStorage.getItem('doctorData') || 'null');
-    if (!doctorData) { setLoading(false); return; }
-    setDoctorId(doctorData.id);
+    if (!doctorData) { setLoading(false); setDataLoaded(true); return; }
 
     const { data } = await supabase
       .from('appointments')
-      .select('*, doctors(id, name, consultation_fee), patients(id)')
+      .select('*, doctors(id, name, consultation_fee, specialization), patients(name, phone, age, sex)')
       .eq('doctor_id', doctorData.id)
       .order('date', { ascending: false });
 
     if (data) setAllApts(data);
     setLoading(false);
+    setDataLoaded(true);
+  }
+
+  function periodApts() {
+    return allApts.filter((a: any) => isInPeriod(a.date, period)).sort(compareBySerialNumber);
+  }
+
+  function periodDateLabel() {
+    return period.start === period.end
+      ? period.start.replace(/-/g, '/')
+      : `${period.start.replace(/-/g, '/')} - ${period.end.replace(/-/g, '/')}`;
+  }
+
+  function mapForReportPDF(apt: any) {
+    const serialSuffix = apt.serial_number?.slice(-1) || '';
+    const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
+    const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find((f: any) => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
+    return {
+      serial: apt.serial_number || '-',
+      patientName: apt.patients?.name || apt.patientName || '-',
+      phone: apt.patients?.phone || '-',
+      age: apt.patients?.age || apt.age || '-',
+      gender: apt.patients?.sex === 'male' ? 'Male' : apt.patients?.sex === 'female' ? 'Female' : apt.patients?.sex || '-',
+      doctor: apt.doctors?.name || apt.doctorName || '-',
+      department: apt.doctors?.specialization || 'General',
+      type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
+      status: apt.status === 'confirmed' ? 'Confirmed' : apt.status === 'completed' ? 'Completed' : apt.status === 'pending' ? 'Pending' : apt.status === 'cancelled' ? 'Cancelled' : apt.status || '-',
+      time: apt.time || '-',
+      date: apt.date || '-',
+      feeType: feeTypeLabel,
+      advance: apt.advance || 0,
+      paid: Math.max(0, (apt.paid || 0) - (apt.refunded || 0)),
+      refunded: apt.refunded || 0,
+      netPayble: getFeeAmount(apt.fee_type) - (apt.refunded || 0),
+      due: (getFeeAmount(apt.fee_type) - (apt.refunded || 0)) - (apt.paid || 0),
+    };
+  }
+
+  function mapForAbsentPDF(apt: any) {
+    const serialSuffix = apt.serial_number?.slice(-1) || '';
+    const feeTypeMap: Record<string, string> = { N: 'New Patient', F: 'Follow Up', R: 'Report Showing' };
+    const feeTypeLabel = feeTypeMap[serialSuffix] || FEE_TYPES.find((f: any) => f.value === apt.fee_type)?.label || apt.fee_type || 'New Patient';
+    return {
+      serial: apt.serial_number || '-',
+      patientName: apt.patients?.name || apt.patientName || '-',
+      phone: apt.patients?.phone || '-',
+      age: apt.patients?.age || apt.age || '-',
+      gender: apt.patients?.sex === 'male' ? 'Male' : apt.patients?.sex === 'female' ? 'Female' : apt.patients?.sex || '-',
+      doctor: apt.doctors?.name || apt.doctorName || '-',
+      department: apt.doctors?.specialization || 'General',
+      type: apt.type === 'teleconsult' ? 'Teleconsult' : 'In-Person',
+      status: apt.status === 'confirmed' ? 'Confirmed' : apt.status === 'completed' ? 'Completed' : apt.status === 'pending' ? 'Pending' : apt.status === 'cancelled' ? 'Cancelled' : apt.status || '-',
+      time: apt.time || '-',
+      date: apt.date || '-',
+      feeType: feeTypeLabel,
+      bookedBy: apt.booked_by || '-',
+      createdAt: apt.created_at || '',
+    };
+  }
+
+  function handleExportPDF() {
+    const filtered = periodApts();
+    if (filtered.length === 0) {
+      toast.error('এই সময়সীমায় কোনো অ্যাপয়েন্টমেন্ট নেই');
+      return;
+    }
+    generateReportPDF({
+      title: `Micare Health - Report (${period.label})`,
+      date: periodDateLabel(),
+      appointments: filtered.map(mapForReportPDF),
+    });
+  }
+
+  function handleExportAbsentPDF() {
+    const absent = periodApts().filter((apt: any) => (apt.paid || 0) === 0 && (apt.refunded || 0) === 0);
+    if (absent.length === 0) {
+      toast.error('এই সময়সীমায় unpaid অ্যাপয়েন্টমেন্ট নেই');
+      return;
+    }
+    generateAbsentPDF({
+      title: `Micare Health - Absent Report (${period.label})`,
+      date: periodDateLabel(),
+      appointments: absent.map(mapForAbsentPDF),
+    });
   }
 
   function calculateStats() {
-    const [year, month] = filterMonth.split('-').map(Number);
-    const lastDay = new Date(year, month, 0);
-    const firstDayStr = `${year}-${String(month).padStart(2, '0')}-01`;
-    const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+    const isEarning = (a: any) => a.status === 'confirmed' || a.status === 'completed';
+    const inRange = (a: any) => isInPeriod(a.date, period);
 
-    const todayAll = allApts.filter((a: any) => a.date === filterDate && (a.status === 'confirmed' || a.status === 'completed'));
-    const todayCompleted = allApts.filter((a: any) => a.date === filterDate && a.status === 'completed' && a.type !== 'teleconsult');
-    const todayTele = allApts.filter((a: any) => a.date === filterDate && (a.status === 'confirmed' || a.status === 'completed') && a.type === 'teleconsult');
-    const todayPatients = new Set(todayAll.map((a: any) => a.patient_id)).size;
+    const earning = allApts.filter((a: any) => inRange(a) && isEarning(a));
+    const inPerson = earning.filter((a: any) => a.type !== 'teleconsult');
+    const tele = earning.filter((a: any) => a.type === 'teleconsult');
+    const completedCount = allApts.filter((a: any) => inRange(a) && a.status === 'completed' && a.type !== 'teleconsult');
+    const patients = new Set(earning.map((a: any) => a.patient_id)).size;
 
-    const monthAll = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr && (a.status === 'confirmed' || a.status === 'completed'));
-    const monthCompleted = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr && a.status === 'completed' && a.type !== 'teleconsult');
-    const monthTele = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr && (a.status === 'confirmed' || a.status === 'completed') && a.type === 'teleconsult');
-    const monthPatients = new Set(monthAll.map((a: any) => a.patient_id)).size;
+    const calcPaid = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.paid) || 0), 0);
 
-    const calcEarnings = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + Math.max(0, (Number(a.paid) || 0) - (Number(a.refunded) || 0)), 0);
-
-    const todayAllForEarnings = allApts.filter((a: any) => a.date === filterDate);
-    const monthAllForEarnings = allApts.filter((a: any) => a.date >= firstDayStr && a.date <= lastDayStr);
-
-    setDailyEarnings(calcEarnings(todayAllForEarnings));
-    setMonthlyEarnings(calcEarnings(monthAllForEarnings));
-    setDailyCompleted(calcEarnings(todayCompleted));
-    setMonthlyCompleted(calcEarnings(monthCompleted));
-    setDailyTeleconsult(calcEarnings(todayTele));
-    setMonthlyTeleconsult(calcEarnings(monthTele));
+    setInPersonMoney(calcPaid(inPerson));
+    setTeleconsultMoney(calcPaid(tele));
 
     setStats([
-      { label: 'মোট অ্যাপয়েন্টমেন্ট', value: todayAll.length, monthlyValue: monthAll.length },
-      { label: 'নিশ্চিতকৃত টেলিকনসাল্ট', value: todayTele.length, monthlyValue: monthTele.length },
-      { label: 'মোট সম্পন্ন', value: todayCompleted.length + todayTele.length, monthlyValue: monthCompleted.length + monthTele.length },
-      { label: 'মোট রোগী', value: todayPatients, monthlyValue: monthPatients },
+      { label: 'মোট অ্যাপয়েন্টমেন্ট', value: earning.length },
+      { label: 'নিশ্চিতকৃত টেলিকনসাল্ট', value: tele.length },
+      { label: 'মোট সম্পন্ন', value: completedCount.length + tele.length },
+      { label: 'মোট রোগী', value: patients },
     ]);
   }
 
@@ -151,29 +207,21 @@ export default function DoctorReports() {
             <p className="text-slate-500">আপনার পরিসংখ্যান</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <input
-              type="date"
-              value={filterDate}
-              onChange={(e) => {
-                setFilterDate(e.target.value);
-                setStatsViewMode('daily');
-              }}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
-            />
+            <ReportPeriodFilter period={period} onChange={setPeriod} />
             <button
-              onClick={() => { setFilterDate(getLocalDateString()); setStatsViewMode('daily'); }}
-              className="px-4 py-2 text-white rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-600 transition shadow-md text-sm font-medium"
+              onClick={handleExportPDF}
+              className="px-4 py-2 text-white rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 transition shadow-md text-sm font-medium flex items-center gap-1.5"
+              title="নির্বাচিত সময়সীমার রিপোর্ট PDF"
             >
-              Today
+              <Download className="w-4 h-4" /> PDF
             </button>
-            <div className="flex bg-slate-100 rounded-lg p-1">
-              <button onClick={() => setStatsViewMode('daily')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${statsViewMode === 'daily' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500'}`}>
-                আজকের
-              </button>
-              <button onClick={() => setStatsViewMode('monthly')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${statsViewMode === 'monthly' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500'}`}>
-                মাসিক
-              </button>
-            </div>
+            <button
+              onClick={handleExportAbsentPDF}
+              className="px-4 py-2 text-white rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 transition shadow-md text-sm font-medium flex items-center gap-1.5"
+              title="যারা পরিশোধ করেনি (Paid 0 / Refund 0)"
+            >
+              <Download className="w-4 h-4" /> Absent PDF
+            </button>
           </div>
         </div>
 
@@ -183,9 +231,7 @@ export default function DoctorReports() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-slate-500 text-sm">{stat.label}</span>
               </div>
-              <p className="text-2xl font-bold text-slate-900">
-                {statsViewMode === 'daily' ? stat.value : stat.monthlyValue}
-              </p>
+              <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
             </motion.div>
           )) : (
             <div className="col-span-4 text-center py-4 text-slate-400">কোনো ডেটা নেই</div>
@@ -200,45 +246,26 @@ export default function DoctorReports() {
                   <Wallet className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="text-emerald-100 text-sm">আয়</p>
+                  <p className="text-emerald-100 text-sm">আয় · {period.label}</p>
                   <p className="text-3xl font-bold">
-                    ৳{statsViewMode === 'daily' ? dailyEarnings.toLocaleString() : monthlyEarnings.toLocaleString()}
+                    ৳{(inPersonMoney + teleconsultMoney).toLocaleString()}
                   </p>
                 </div>
               </div>
             </div>
             <div className="space-y-3 pt-2">
-              {statsViewMode === 'daily' ? (
-                <>
-                  <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
-                    <span className="text-emerald-100">সম্পন্ন সরাসরি অ্যাপয়েন্টমেন্ট</span>
-                    <span className="font-semibold">৳{dailyCompleted.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
-                    <span className="text-emerald-100">নিশ্চিতকৃত টেলিকনসাল্ট</span>
-                    <span className="font-semibold">৳{dailyTeleconsult.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between bg-white/20 rounded-lg p-3">
-                    <span className="text-white font-medium">মোট</span>
-                    <span className="text-white font-bold">৳{dailyEarnings.toLocaleString()}</span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
-                    <span className="text-emerald-100">সম্পন্ন সরাসরি অ্যাপয়েন্টমেন্ট</span>
-                    <span className="font-semibold">৳{monthlyCompleted.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
-                    <span className="text-emerald-100">নিশ্চিতকৃত টেলিকনসাল্ট</span>
-                    <span className="font-semibold">৳{monthlyTeleconsult.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between bg-white/20 rounded-lg p-3">
-                    <span className="text-white font-medium">মোট</span>
-                    <span className="text-white font-bold">৳{monthlyEarnings.toLocaleString()}</span>
-                  </div>
-                </>
-              )}
+              <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
+                <span className="text-emerald-100">সম্পন্ন সরাসরি অ্যাপয়েন্টমেন্ট</span>
+                <span className="font-semibold">৳{inPersonMoney.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between bg-white/10 rounded-lg p-3">
+                <span className="text-emerald-100">নিশ্চিতকৃত টেলিকনসাল্ট</span>
+                <span className="font-semibold">৳{teleconsultMoney.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between bg-white/20 rounded-lg p-3">
+                <span className="text-white font-medium">মোট</span>
+                <span className="text-white font-bold">৳{(inPersonMoney + teleconsultMoney).toLocaleString()}</span>
+              </div>
             </div>
           </Card>
         </motion.div>
