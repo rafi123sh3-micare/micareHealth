@@ -171,6 +171,164 @@ export default function AdminAppointments() {
     advance: 0 as number,
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
+
+  // পূর্বের অ্যাপয়েন্টমেন্ট চেক (ফোন নম্বর দিয়ে)
+  const [prevCheckPhone, setPrevCheckPhone] = useState('');
+  const [prevCheckResults, setPrevCheckResults] = useState<any[]>([]);
+  const [prevChecking, setPrevChecking] = useState(false);
+  const [prevPending, setPrevPending] = useState(false); // নম্বর টাইপ হওয়ার অপেক্ষায় (১১ ডিজিট)
+  const [prevChecked, setPrevChecked] = useState(false);
+  const [deletingPrevId, setDeletingPrevId] = useState<string | null>(null);
+
+  const prevStatusLabel = (s: string) =>
+    s === 'confirmed' ? 'নিশ্চিত' : s === 'completed' ? 'সম্পন্ন' : s === 'pending' ? 'অপেক্ষায়' : s === 'cancelled' ? 'বাতিল' : (s || '-');
+
+  const searchPrevAppointments = useCallback(async (phone: string): Promise<any[]> => {
+    const digits = (phone || '').replace(/\D/g, '');
+    if (digits.length < 6) {
+      setPrevCheckResults([]);
+      setPrevChecked(false);
+      return [];
+    }
+    setPrevChecking(true);
+    try {
+      const last = digits.slice(-10);
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('id, date, time, status, type, fee_type, paid, refunded, serial_number, patients(name, phone), doctors(name)')
+        .order('date', { ascending: false });
+      if (error) throw error;
+      // ফোন নম্বর বিভিন্ন ফরম্যাটে (+880, 880, 017...) সেভ হতে পারে — শেষ ১০ ডিজিট দিয়ে মিলানো হয়
+      const matches = (data || []).filter((a: any) => {
+        const candidates = [a.patients?.phone, a.patient_mobile].filter(Boolean) as string[];
+        return candidates.some((p: string) => p.replace(/\D/g, '').endsWith(last));
+      });
+      setPrevCheckResults(matches);
+      setPrevChecked(true);
+      return matches;
+    } catch (e: any) {
+      console.error('Prev appointment check failed:', e);
+      toast.error('পূর্বের অ্যাপয়েন্টমেন্ট খুঁজতে ব্যর্থ');
+      return [];
+    } finally {
+      setPrevChecking(false);
+    }
+  }, []);
+
+  // ১১ ডিজিট পূর্ণ হলে ৭০০ms পর স্বয়ংক্রিয় সার্চ — টাইপ করার সময় লোডার দেখায়
+  useEffect(() => {
+    const digits = (walkinPatient.phone || '').replace(/\D/g, '');
+    if (digits.length === 0) {
+      setPrevPending(false); setPrevCheckResults([]); setPrevChecked(false);
+      return;
+    }
+    if (digits.length < 11) { setPrevPending(false); return; }
+    setPrevPending(true);
+    const t = setTimeout(async () => {
+      setPrevPending(false);
+      await searchPrevAppointments(walkinPatient.phone);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [walkinPatient.phone, searchPrevAppointments]);
+
+  // পেজের উপরের চেক বক্সেও একই নিয়ম
+  useEffect(() => {
+    const digits = (prevCheckPhone || '').replace(/\D/g, '');
+    if (digits.length === 0) {
+      setPrevPending(false); setPrevCheckResults([]); setPrevChecked(false);
+      return;
+    }
+    if (digits.length < 11) { setPrevPending(false); return; }
+    setPrevPending(true);
+    const t = setTimeout(async () => {
+      setPrevPending(false);
+      await searchPrevAppointments(prevCheckPhone);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [prevCheckPhone, searchPrevAppointments]);
+
+  const handleDeletePrevAppointment = async (id: string) => {
+    if (!window.confirm('এই পূর্বের অ্যাপয়েন্টমেন্টটি মুছে ফেলবেন? এটি ফিরে আসবে না।')) return;
+    setDeletingPrevId(id);
+    try {
+      const { error } = await supabase.from('appointments').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('অ্যাপয়েন্টমেন্ট মুছে ফেলা হয়েছে');
+      setPrevCheckResults((rs) => rs.filter((r) => r.id !== id));
+      await loadData(false);
+    } catch (e: any) {
+      toast.error(`মুছতে ব্যর্থ: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setDeletingPrevId(null);
+    }
+  };
+
+  // যোগ করার আগে একই নম্বরে পূর্বের অ্যাপয়েন্টমেন্ট আছে কিনা চেক করে
+  const handleAddWalkinClick = async () => {
+    if (!walkinPatient.name || !walkinPatient.doctor_id) {
+      toast.error('রোগীর নাম ও ডাক্তার নির্বাচন করুন');
+      return;
+    }
+    const digits = (walkinPatient.phone || '').replace(/\D/g, '');
+    if (digits.length >= 6 && !prevChecked) {
+      const matches = await searchPrevAppointments(walkinPatient.phone);
+      if (matches && matches.length > 0) {
+        toast('এই নম্বরে পূর্বের অ্যাপয়েন্টমেন্ট পাওয়া গেছে — নিচে দেখুন, দরকার হলে মুছে ফেলুন', { icon: '⚠️', duration: 6000 });
+        return; // প্রথম চাপে শুধু দেখাবে — রিভিউ করে আবার চাপলে যোগ হবে
+      }
+    }
+    handleAddWalkin();
+  };
+
+  const renderPrevResults = () => (
+    <>
+      {prevPending && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <span className="w-4 h-4 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+          খোঁজা হচ্ছে...
+        </div>
+      )}
+      {prevChecking && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <span className="w-4 h-4 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin" />
+          খোঁজা হচ্ছে...
+        </div>
+      )}
+      {!prevChecking && prevChecked && prevCheckResults.length === 0 && (
+        <p className="text-sm text-emerald-600">এই নম্বরে কোনো পূর্বের অ্যাপয়েন্টমেন্ট পাওয়া যায়নি</p>
+      )}
+      {!prevChecking && prevCheckResults.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-slate-500">{prevCheckResults.length} টি পূর্বের অ্যাপয়েন্টমেন্ট পাওয়া গেছে</p>
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+          {prevCheckResults.map((a) => (
+            <div key={a.id} className="flex items-start justify-between gap-2 p-2.5 bg-white rounded-lg border border-slate-200">
+              <div className="text-sm min-w-0">
+                <div className="font-medium text-slate-900 truncate">
+                  {a.patients?.name || 'নাম নেই'} · <span className="font-mono">{a.serial_number || '-'}</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-0.5">
+                  {a.date || '-'}{a.time ? ` · ${a.time}` : ''} · {a.doctors?.name || '-'} · {a.type === 'teleconsult' ? 'ভিডিও কল' : 'সরাসরি'} ·{' '}
+                  <span className={a.status === 'cancelled' ? 'text-red-500' : 'text-emerald-600'}>{prevStatusLabel(a.status)}</span>
+                  {' '}· ফি: ৳{getFeeAmount(a.fee_type)} · পরিশোধ: ৳{Math.max(0, (a.paid || 0) - (a.refunded || 0))}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDeletePrevAppointment(a.id)}
+                disabled={deletingPrevId === a.id}
+                className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition disabled:opacity-50"
+              >
+                {deletingPrevId === a.id ? 'মুছছে...' : 'মুছুন'}
+              </button>
+            </div>
+          ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+  
   const [schedules, setSchedules] = useState<any[]>([]);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrAppointment, setQRAppointment] = useState<any>(null);
@@ -1360,11 +1518,37 @@ try {
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={handleExportPDF}><Download className="w-5 h-5" /> PDF</Button>
             <Button variant="secondary" onClick={handleExportAbsentPDF} title="যারা পরিশোধ করেনি (Paid 0 / Refund 0)"><Download className="w-5 h-5" /> Absent PDF</Button>
-            <Button onClick={() => setShowWalkinModal(true)}>
+            <Button onClick={() => { setShowWalkinModal(true); setPrevCheckResults([]); setPrevChecked(false); }}>
               <Plus className="w-5 h-5" /> নতুন অ্যাপয়েন্টমেন্ট
             </Button>
           </div>
         </div>
+
+        <Card className="bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-lg shadow-slate-200/20">
+          <label className="text-sm font-medium text-slate-600 mb-2 block">পূর্বের অ্যাপয়েন্টমেন্ট চেক</label>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="tel"
+              value={prevCheckPhone}
+              onChange={(e) => {
+                setPrevCheckPhone(e.target.value);
+                if (!e.target.value) { setPrevCheckResults([]); setPrevChecked(false); }
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') searchPrevAppointments(prevCheckPhone); }}
+              className="input flex-1 min-w-[200px]"
+              placeholder="ফোন নম্বর দিন"
+            />
+            <Button variant="secondary" onClick={() => searchPrevAppointments(prevCheckPhone)} disabled={prevChecking}>
+              <Search className="w-4 h-4" /> {prevChecking ? 'খোঁজা হচ্ছে...' : 'সার্চ'}
+            </Button>
+          </div>
+          <div className="mt-3">
+            {renderPrevResults()}
+            {!prevChecking && !prevChecked && !prevPending && (
+              <p className="text-sm text-slate-400">ফোন নম্বর দিলে ঐ নম্বরের সব পূর্বের অ্যাপয়েন্টমেন্ট বিস্তারিতসহ দেখা যাবে</p>
+            )}
+          </div>
+        </Card>
 
         <Card className="relative z-40 bg-white/80 backdrop-blur-xl border border-slate-200/60 shadow-lg shadow-slate-200/20">
           <div className="flex flex-wrap gap-4 items-end">
@@ -1769,7 +1953,7 @@ try {
       {/* WALK-IN MODAL */}
       <Modal
         isOpen={showWalkinModal}
-        onClose={() => setShowWalkinModal(false)}
+        onClose={() => { setShowWalkinModal(false); setPrevCheckResults([]); setPrevChecked(false); }}
         title="নতুন অ্যাপয়েন্টমেন্ট"
       >
         <div className="space-y-5">
@@ -1802,11 +1986,26 @@ try {
                  type="tel"
                  value={walkinPatient.phone}
                  onChange={(e) => setWalkinPatient({ ...walkinPatient, phone: e.target.value })}
+                 onKeyDown={(e) => { if (e.key === 'Enter') { setPrevPending(false); searchPrevAppointments(walkinPatient.phone); } }}
                  className="input w-full"
                  placeholder="01XXXXXXXXX"
                />
              </div>
            </div>
+
+           {(walkinPatient.phone || '').replace(/\D/g, '').length >= 6 ? (
+             <div className="p-3 bg-primary-50/60 rounded-lg border border-primary-100">
+               <label className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+                 <Search className="w-3.5 h-3.5" /> পূর্বের অ্যাপয়েন্টমেন্ট চেক
+               </label>
+               {renderPrevResults()}
+             </div>
+           ) : (
+             <p className="text-xs text-slate-400 flex items-center gap-1.5">
+               <Search className="w-3.5 h-3.5 shrink-0" />
+               ফোন নম্বর দিলে ঐ নম্বরের পূর্বের অ্যাপয়েন্টমেন্ট এখানে দেখা যাবে
+             </p>
+           )}
            
            <div className="grid grid-cols-2 gap-3">
                <div>
@@ -1851,32 +2050,7 @@ try {
             </select>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-600 mb-2 block">ধরন</label>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setWalkinPatient({ ...walkinPatient, type: 'in-person' })}
-                className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all ${walkinPatient.type === 'in-person'
-                    ? 'border-primary-500 bg-primary-50 text-primary-700'
-                    : 'border-slate-200 hover:border-slate-300'
-                  }`}
-              >
-                সরাসরি
-              </button>
-              <button
-                type="button"
-                onClick={() => setWalkinPatient({ ...walkinPatient, type: 'teleconsult' })}
-                className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all ${walkinPatient.type === 'teleconsult'
-                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                    : 'border-slate-200 hover:border-slate-300'
-                  }`}
-              >
-                ভিডিও কল
-              </button>
-            </div>
-          </div>
-
+          {/* ওয়াক-ইন অ্যাপয়েন্টমেন্ট সবসময় সরাসরি (in-person) */}
           <div>
             <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
             <div className="grid grid-cols-3 gap-2">
@@ -1898,31 +2072,33 @@ try {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
-              <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(walkinPatient.fee_type)}</div>
+          {effectiveRole !== 'appointment_taker' && (
+            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
+                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(walkinPatient.fee_type)}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={getFeeAmount(walkinPatient.fee_type)}
+                  value={walkinPatient.advance || ''}
+                  placeholder="০"
+                  onChange={(e) => {
+                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(walkinPatient.fee_type));
+                    setWalkinPatient({ ...walkinPatient, advance: val });
+                  }}
+                  className="input w-full text-center font-semibold"
+                />
+              </div>
+              <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
+                <span className="text-slate-500">বাকি (Due):</span>
+                <span className="font-bold text-primary-600">৳{getFeeAmount(walkinPatient.fee_type) - walkinPatient.advance}</span>
+              </div>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
-              <input
-                type="number"
-                min={0}
-                max={getFeeAmount(walkinPatient.fee_type)}
-                value={walkinPatient.advance || ''}
-                placeholder="০"
-                onChange={(e) => {
-                  const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(walkinPatient.fee_type));
-                  setWalkinPatient({ ...walkinPatient, advance: val });
-                }}
-                className="input w-full text-center font-semibold"
-              />
-            </div>
-            <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
-              <span className="text-slate-500">বাকি (Due):</span>
-              <span className="font-bold text-primary-600">৳{getFeeAmount(walkinPatient.fee_type) - walkinPatient.advance}</span>
-            </div>
-          </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-slate-600 mb-2 block">তারিখ</label>
@@ -1940,7 +2116,7 @@ try {
 
 
           <Button
-            onClick={handleAddWalkin}
+            onClick={handleAddWalkinClick}
             className="w-full"
             disabled={creatingWalkin}
           >

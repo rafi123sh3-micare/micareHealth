@@ -146,7 +146,8 @@ export default function AdminReports() {
   }
 
   function handleExportPDF() {
-    const filtered = periodApts();
+    // রিপোর্ট পেজের পরিসংখ্যানের সাথে মিল রাখতে শুধু confirmed/completed অ্যাপয়েন্টমেন্ট
+    const filtered = periodApts().filter((a: any) => a.status === 'confirmed' || a.status === 'completed');
     if (filtered.length === 0) {
       toast.error('এই সময়সীমায় কোনো অ্যাপয়েন্টমেন্ট নেই');
       return;
@@ -201,7 +202,7 @@ export default function AdminReports() {
     ]);
 
     setDoctorStats(allDoctors.map((doc: any) => {
-      const filtered = allApts.filter((a: any) => a.doctor_id === doc.id && inRange(a));
+      const filtered = allApts.filter((a: any) => a.doctor_id === doc.id && inRange(a) && isEarning(a));
       return {
         name: doc.name,
         appointments: filtered.length,
