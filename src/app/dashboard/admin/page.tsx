@@ -298,7 +298,13 @@ export default function AdminDashboard() {
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => {
+                    onClick={async () => {
+                      const { getPatientDue } = await import('@/lib/due');
+                      const due = await getPatientDue(scannedPatient.id);
+                      if (due > 0) {
+                        toast.error(`রোগীর বকেয়া ৳${due.toLocaleString()} আছে — আগে পরিশোধ নিন`);
+                        return;
+                      }
                       window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${scannedPatient.id}&source=micare`, '_blank');
                     }}
                   >

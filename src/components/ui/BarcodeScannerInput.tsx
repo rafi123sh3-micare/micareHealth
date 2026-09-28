@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Scan, Search, X, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getPatientDue } from '@/lib/due';
 import toast from 'react-hot-toast';
 
 interface PatientResult {
@@ -48,6 +49,13 @@ export function BarcodeScannerInput({
       }
 
       onPatientFound(patient);
+
+      const due = await getPatientDue(patient.id);
+      if (due > 0) {
+        toast.error(`রোগীর বকেয়া ৳${due.toLocaleString()} আছে — আগে পরিশোধ নিন`);
+        return;
+      }
+
       window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${patient.id}`, '_blank');
     } catch {
       toast.error('সার্ভার ত্রুটি');

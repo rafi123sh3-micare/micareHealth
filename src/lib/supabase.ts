@@ -87,6 +87,25 @@ export function getFeeTypePrefix(feeType?: string): string {
   return FEE_TYPE_PREFIX[feeType || ''] || '';
 }
 
+/**
+ * Swap ONLY the fee-type letter inside an already-assigned serial number,
+ * leaving the doctor code, queue position, A/T marker and phone suffix intact.
+ *
+ *   DR01-001AN7151 + follow_up  ->  DR01-001AF7151
+ *   DR01-001AN7151 + report     ->  DR01-001AR7151
+ *
+ * The NNN group is a live queue position maintained by the resequencing
+ * trigger, so it must never be rewritten here. Serials that do not match the
+ * expected shape are returned unchanged.
+ */
+export function withFeeTypePrefix(serialNumber: string | null | undefined, feeType?: string): string {
+  if (!serialNumber) return '';
+  const match = serialNumber.match(/^(.+-\d+)([AT])([NFR]?)(\d*)$/);
+  if (!match) return serialNumber;
+  const [, head, typeMarker, , phoneSuffix] = match;
+  return `${head}${typeMarker}${getFeeTypePrefix(feeType)}${phoneSuffix}`;
+}
+
 export function numberToWords(n: number): string {
   if (n === 0) return 'Zero Taka Only';
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];

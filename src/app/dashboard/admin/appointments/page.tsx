@@ -7,8 +7,9 @@ import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { supabase, supabase1, generateSerialNumber, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
+import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { getPatientDue } from '@/lib/due';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { setCache, getCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
@@ -930,6 +931,11 @@ export default function AdminAppointments() {
         .eq('bcode', code)
         .maybeSingle();
       if (patient) {
+        const due = await getPatientDue(patient.id);
+        if (due > 0) {
+          toast.error(`রোগীর বকেয়া ৳${due.toLocaleString()} আছে — আগে পরিশোধ নিন`);
+          return;
+        }
         window.open(`https://carescriptrx.vercel.app/dashboard/doctor/prescribe?patient_id=${patient.id}&source=micare`, '_blank');
       } else {
         toast.error('কোনো রোগী খুঁজে পাওয়া যায়নি');
@@ -1136,7 +1142,9 @@ try {
       const scheduleStart = resolveScheduleStart(editSchedules, editApptForm.date);
       const type = editApptForm.type === 'teleconsult' ? 'teleconsult' : 'appointment';
 
-      // Serial number is permanent once assigned — never regenerate on edit
+      // The serial is permanent once assigned — only its fee-type letter
+      // (N/F/R) is refreshed so it keeps matching fee_type. The queue position,
+      // doctor code, A/T marker and phone suffix are left untouched.
       const updateData: any = {
         doctor_id: editApptForm.doctor_id,
         date: editApptForm.date,
@@ -1149,6 +1157,10 @@ try {
         booked_by: editApptForm.booked_by,
         time: scheduleStart || editPatientApt.time || '09:00',
       };
+
+      if (editPatientApt.serial_number) {
+        updateData.serial_number = withFeeTypePrefix(editPatientApt.serial_number, editApptForm.fee_type);
+      }
 
       const { error: aptError } = await supabase
         .from('appointments')
@@ -1171,6 +1183,9 @@ try {
         patient_mobile: editPatientForm.phone,
         booked_by: editApptForm.booked_by,
       });
+      if (updateData.serial_number) {
+        updated.serial_number = updateData.serial_number;
+      }
       if (updated.doctorName !== undefined) {
         updated.doctorName = doctors.find(d => d.id === editApptForm.doctor_id)?.name || updated.doctorName;
         updated.departmentName = doctors.find(d => d.id === editApptForm.doctor_id)?.specialization || updated.departmentName;
