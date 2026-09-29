@@ -182,7 +182,13 @@ export default function AdminReports() {
     const completedCount = allApts.filter((a: any) => inRange(a) && a.status === 'completed' && a.type !== 'teleconsult');
     const patients = new Set(earning.map((a: any) => a.patient_id)).size;
 
-    const calcPaid = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.paid) || 0), 0);
+    // Net collected per appointment — the same value the appointments table
+    // shows in its পরিশোধ (Paid) column. A fully refunded appointment
+    // contributes 0 here, not its original gross paid amount.
+    const calcPaid = (apts: any[]) => apts.reduce(
+      (sum: number, a: any) => sum + Math.max(0, (Number(a.paid) || 0) - (Number(a.refunded) || 0)),
+      0
+    );
     const calcRefunded = (apts: any[]) => apts.reduce((sum: number, a: any) => sum + (Number(a.refunded) || 0), 0);
 
     setInPersonMoney(calcPaid(inPerson));
