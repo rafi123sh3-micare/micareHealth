@@ -297,9 +297,11 @@ export function generateCashMemoPrint(data: CashMemoData) {
       <div class="brand-area">
         <div class="brand-name">Micare Health</div>
         <div class="brand-details">
-          Shyamoli Cinema Hall Building Complex, Ring Road Shyamoli, Dhaka-1207<br>
-          Tel: +8801898803000 &nbsp;|&nbsp; Email: info@micare.com.bd<br>
-          Web: www.micare.com.bd
+          Cumilla Micare Center:<br>
+          Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.<br>
+          Wednesday (11:00 AM - 5:00 PM) | Thursday (2:00 PM - 7:00 PM)<br>
+          Tel: +8801841960102, +8801841960103<br>
+          Email: info@micare.com.bd &nbsp;|&nbsp; Web: www.micare.com.bd
         </div>
       </div>
       <div style="width:80px;flex-shrink:0;"></div>

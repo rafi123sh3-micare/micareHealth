@@ -103,8 +103,8 @@ export function generateReportPDF(data: ReportPDFData) {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
-      doc.text('Shyamoli Cinema Hall Building Complex, Ring Road Shyamoli, Dhaka-1207', pageWidth / 2, headerEnd + 4, { align: 'center' });
-      doc.text('Tel: +8801898803000 | Email: info@micare.com.bd | Web: www.micare.com.bd', pageWidth / 2, headerEnd + 9, { align: 'center' });
+      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, headerEnd + 4, { align: 'center' });
+      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, headerEnd + 9, { align: 'center' });
 
       doc.setDrawColor(...PRIMARY);
       doc.setLineWidth(0.4);
@@ -120,8 +120,8 @@ export function generateReportPDF(data: ReportPDFData) {
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
-      doc.text('Shyamoli Cinema Hall Building Complex, Ring Road Shyamoli, Dhaka-1207', pageWidth / 2, 18, { align: 'center' });
-      doc.text('Tel: +8801898803000 | Email: info@micare.com.bd | Web: www.micare.com.bd', pageWidth / 2, 23, { align: 'center' });
+      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, 18, { align: 'center' });
+      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, 23, { align: 'center' });
 
       doc.setDrawColor(...PRIMARY);
       doc.setLineWidth(0.4);
@@ -237,8 +237,8 @@ export function generateAppointmentPDF(data: PDFExportData, fileName?: string) {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
-      doc.text('Shyamoli Cinema Hall Building Complex, Ring Road Shyamoli, Dhaka-1207', pageWidth / 2, headerEnd + 4, { align: 'center' });
-      doc.text('Tel: +8801898803000 | Email: info@micare.com.bd | Web: www.micare.com.bd', pageWidth / 2, headerEnd + 9, { align: 'center' });
+      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, headerEnd + 4, { align: 'center' });
+      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, headerEnd + 9, { align: 'center' });
 
       doc.setDrawColor(...PRIMARY);
       doc.setLineWidth(0.4);
@@ -254,8 +254,8 @@ export function generateAppointmentPDF(data: PDFExportData, fileName?: string) {
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
-      doc.text('Shyamoli Cinema Hall Building Complex, Ring Road Shyamoli, Dhaka-1207', pageWidth / 2, 18, { align: 'center' });
-      doc.text('Tel: +8801898803000 | Email: info@micare.com.bd | Web: www.micare.com.bd', pageWidth / 2, 23, { align: 'center' });
+      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, 18, { align: 'center' });
+      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, 23, { align: 'center' });
 
       doc.setDrawColor(...PRIMARY);
       doc.setLineWidth(0.4);
