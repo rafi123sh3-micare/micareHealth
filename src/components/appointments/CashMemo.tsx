@@ -1,5 +1,7 @@
 'use client';
 
+import { getBranchHeader } from '@/lib/branch';
+
 interface CashMemoData {
   billNo: string;
   date: string;
@@ -56,6 +58,15 @@ export function generateCashMemoPrint(data: CashMemoData) {
 
   const svgBarcode = `<svg id="barcode"></svg>`;
 
+  const branch = getBranchHeader();
+  const branchHtml = `
+        <div class="brand-name">Micare Health</div>
+        ${branch.boldTitle ? `<div class="brand-branch">${branch.boldTitle}</div>` : ''}
+        <div class="brand-details">
+          ${branch.address}<br>
+          ${branch.contactLines.join('<br>')}
+        </div>`;
+
   pw.document.write(`<!DOCTYPE html>
 <html>
 <head>
@@ -100,6 +111,12 @@ export function generateCashMemoPrint(data: CashMemoData) {
       font-weight: 800;
       color: #0f172a;
       text-transform: uppercase;
+    }
+    .brand-branch {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-top: 1px;
     }
     .brand-details {
       font-size: 7px;
@@ -295,14 +312,7 @@ export function generateCashMemoPrint(data: CashMemoData) {
         <img src="https://iili.io/Cf3Yo8b.png" alt="Micare Health" style="height:32px;width:auto;object-fit:contain;" />
       </div>
       <div class="brand-area">
-        <div class="brand-name">Micare Health</div>
-        <div class="brand-details">
-          Cumilla Micare Center:<br>
-          Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.<br>
-          Wednesday (11:00 AM - 5:00 PM) | Thursday (2:00 PM - 7:00 PM)<br>
-          Tel: +8801841960102, +8801841960103<br>
-          Email: info@micare.com.bd &nbsp;|&nbsp; Web: www.micare.com.bd
-        </div>
+        ${branchHtml}
       </div>
       <div style="width:80px;flex-shrink:0;"></div>
     </div>

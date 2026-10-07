@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase, getCurrentUser, getSession, subscribeToAuth, signIn as supabaseSignIn, signUp as supabaseSignUp, signOut as supabaseSignOut } from '@/lib/supabase';
 import { User, UserRole } from '@/types';
+import { cacheUserEmail } from '@/lib/branch';
 
 interface AuthContextType {
   user: User | null;
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (userData) {
           setUser(userData as User);
+          cacheUserEmail((userData as any).email);
         }
       }
       setLoading(false);
@@ -48,9 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (userData) {
           setUser(userData as User);
+          cacheUserEmail((userData as any).email);
         }
       } else {
         setUser(null);
+        cacheUserEmail(null);
       }
     });
 
@@ -70,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (userData) {
         setUser(userData as User);
+        cacheUserEmail((userData as any).email);
       }
     }
 
@@ -89,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (newUserData) {
         setUser(newUserData as User);
+        cacheUserEmail((newUserData as any).email);
       }
     }
 
@@ -98,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     await supabaseSignOut();
     setUser(null);
+    cacheUserEmail(null);
   };
 
   return (

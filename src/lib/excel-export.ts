@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getBranchHeader, type BranchHeader } from '@/lib/branch';
 
 interface PDFExportData {
   title: string;
@@ -48,6 +49,53 @@ interface ReportPDFData {
 
 const PRIMARY: [number, number, number] = [13, 93, 158];
 
+/**
+ * Draws the branch-aware invoice header (logo/brand + optional bold branch
+ * title + address + contact) and returns the y position just below the rule
+ * that separates it from the body.
+ */
+function drawPdfHeader(doc: jsPDF, pageWidth: number, headerImage: string | null, branch: BranchHeader): number {
+  let y: number;
+
+  if (headerImage) {
+    const headerH = 28;
+    const props = doc.getImageProperties(headerImage);
+    const headerW = headerH * (props.width / props.height);
+    doc.addImage(headerImage, 'PNG', pageWidth / 2 - headerW / 2, 4, headerW, headerH);
+    y = 40;
+  } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(...PRIMARY);
+    doc.text('MICARE HEALTH', pageWidth / 2, 12, { align: 'center' });
+    y = 18;
+  }
+
+  const size = headerImage ? 8 : 9;
+  const gap = 5;
+  doc.setTextColor(0, 0, 0);
+
+  if (branch.boldTitle) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(size);
+    doc.text(branch.boldTitle, pageWidth / 2, y, { align: 'center' });
+    y += gap;
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(size);
+  doc.text(branch.address, pageWidth / 2, y, { align: 'center' });
+  y += gap;
+  doc.text(branch.contact, pageWidth / 2, y, { align: 'center' });
+
+  const ruleY = y + 3;
+  doc.setDrawColor(...PRIMARY);
+  doc.setLineWidth(0.4);
+  doc.line(10, ruleY, pageWidth - 10, ruleY);
+
+  return ruleY + 2;
+}
+
 function toBase64(url: string): Promise<string | null> {
   return fetch(url)
     .then(res => { if (!res.ok) throw new Error(); return res.blob(); })
@@ -90,45 +138,7 @@ export function generateReportPDF(data: ReportPDFData) {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    let headerEnd: number;
-
-    if (header) {
-      const headerH = 28;
-      const props = doc.getImageProperties(header);
-      const headerW = headerH * (props.width / props.height);
-      doc.addImage(header, 'PNG', pageWidth / 2 - headerW / 2, 4, headerW, headerH);
-
-      headerEnd = 4 + headerH + 4;
-
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, headerEnd + 4, { align: 'center' });
-      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, headerEnd + 9, { align: 'center' });
-
-      doc.setDrawColor(...PRIMARY);
-      doc.setLineWidth(0.4);
-      doc.line(10, headerEnd + 12, pageWidth - 10, headerEnd + 12);
-
-      headerEnd += 14;
-    } else {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.setTextColor(...PRIMARY);
-      doc.text('MICARE HEALTH', pageWidth / 2, 12, { align: 'center' });
-
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, 18, { align: 'center' });
-      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, 23, { align: 'center' });
-
-      doc.setDrawColor(...PRIMARY);
-      doc.setLineWidth(0.4);
-      doc.line(10, 26, pageWidth - 10, 26);
-
-      headerEnd = 28;
-    }
+    const headerEnd = drawPdfHeader(doc, pageWidth, header, getBranchHeader());
 
     const totalPaid = data.appointments.reduce((s, a) => s + (a.paid || 0), 0);
     const totalRefunded = data.appointments.reduce((s, a) => s + (a.refunded || 0), 0);
@@ -224,45 +234,7 @@ export function generateAppointmentPDF(data: PDFExportData, fileName?: string) {
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    let headerEnd: number;
-
-    if (header) {
-      const headerH = 28;
-      const props = doc.getImageProperties(header);
-      const headerW = headerH * (props.width / props.height);
-      doc.addImage(header, 'PNG', pageWidth / 2 - headerW / 2, 4, headerW, headerH);
-
-      headerEnd = 4 + headerH + 4;
-
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, headerEnd + 4, { align: 'center' });
-      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, headerEnd + 9, { align: 'center' });
-
-      doc.setDrawColor(...PRIMARY);
-      doc.setLineWidth(0.4);
-      doc.line(10, headerEnd + 12, pageWidth - 10, headerEnd + 12);
-
-      headerEnd += 14;
-    } else {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.setTextColor(...PRIMARY);
-      doc.text('MICARE HEALTH', pageWidth / 2, 12, { align: 'center' });
-
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(0, 0, 0);
-      doc.text('Cumilla Micare Center, Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.', pageWidth / 2, 18, { align: 'center' });
-      doc.text('Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd', pageWidth / 2, 23, { align: 'center' });
-
-      doc.setDrawColor(...PRIMARY);
-      doc.setLineWidth(0.4);
-      doc.line(10, 26, pageWidth - 10, 26);
-
-      headerEnd = 28;
-    }
+    const headerEnd = drawPdfHeader(doc, pageWidth, header, getBranchHeader());
 
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
