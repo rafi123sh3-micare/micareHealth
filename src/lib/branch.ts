@@ -70,8 +70,8 @@ export interface BranchHeader {
 
 const HEADERS: Record<BranchId, BranchHeader> = {
   cumilla: {
-    brand: '',
-    title: 'Cumilla Micare Center',
+    brand: 'Micare Health',
+    title: '',
     address:
       'Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.',
     contact:
