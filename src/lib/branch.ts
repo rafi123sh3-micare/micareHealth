@@ -57,8 +57,10 @@ export function getBranchId(): BranchId {
 }
 
 export interface BranchHeader {
-  /** Bold sub-heading shown above the address. Empty for branches without one. */
-  boldTitle: string;
+  /** Brand line above the branch heading. Empty string suppresses it entirely. */
+  brand: string;
+  /** Bold branch heading. Empty string suppresses it; never rendered with a colon. */
+  title: string;
   address: string;
   /** Single-line contact string, used by the PDF header. */
   contact: string;
@@ -68,7 +70,8 @@ export interface BranchHeader {
 
 const HEADERS: Record<BranchId, BranchHeader> = {
   cumilla: {
-    boldTitle: 'Cumilla Micare Center:',
+    brand: '',
+    title: 'Cumilla Micare Center',
     address:
       'Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.',
     contact:
@@ -80,7 +83,8 @@ const HEADERS: Record<BranchId, BranchHeader> = {
     ],
   },
   shyamoli: {
-    boldTitle: '',
+    brand: 'Micare Health',
+    title: '',
     address: 'Shyamoli Cinema Hall Building Complex, Ring Road Shyamoli, Dhaka-1207',
     contact: 'Tel: +8801898803000 | Email: info@micare.com.bd | Web: www.micare.com.bd',
     contactLines: [

@@ -60,8 +60,8 @@ export function generateCashMemoPrint(data: CashMemoData) {
 
   const branch = getBranchHeader();
   const branchHtml = `
-        <div class="brand-name">Micare Health</div>
-        ${branch.boldTitle ? `<div class="brand-branch">${branch.boldTitle}</div>` : ''}
+        ${branch.brand ? `<div class="brand-name">${branch.brand}</div>` : ''}
+        ${branch.title ? `<div class="brand-branch">${branch.title}</div>` : ''}
         <div class="brand-details">
           ${branch.address}<br>
           ${branch.contactLines.join('<br>')}

@@ -64,21 +64,25 @@ function drawPdfHeader(doc: jsPDF, pageWidth: number, headerImage: string | null
     doc.addImage(headerImage, 'PNG', pageWidth / 2 - headerW / 2, 4, headerW, headerH);
     y = 40;
   } else {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.setTextColor(...PRIMARY);
-    doc.text('MICARE HEALTH', pageWidth / 2, 12, { align: 'center' });
+    // No logo: the branch heading takes over the brand slot at 18pt.
     y = 18;
+    const heading = branch.brand || branch.title;
+    if (heading) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(...PRIMARY);
+      doc.text(branch.brand ? heading.toUpperCase() : heading, pageWidth / 2, 12, { align: 'center' });
+    }
   }
 
   const size = headerImage ? 8 : 9;
   const gap = 5;
   doc.setTextColor(0, 0, 0);
 
-  if (branch.boldTitle) {
+  if (headerImage && branch.title) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(size);
-    doc.text(branch.boldTitle, pageWidth / 2, y, { align: 'center' });
+    doc.text(branch.title, pageWidth / 2, y, { align: 'center' });
     y += gap;
   }
 
