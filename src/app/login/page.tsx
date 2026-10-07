@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { supabase } from '@/lib/supabase';
+import { cacheUserEmail } from '@/lib/branch';
 import { Button } from '@/components/ui/Button';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
@@ -31,6 +32,7 @@ export default function Login() {
         const isTaker = admin.role === 'appointment_taker';
         localStorage.setItem('userRole', isTaker ? 'appointment_taker' : 'admin');
         localStorage.setItem('adminData', JSON.stringify(admin));
+        cacheUserEmail(admin.email);
         router.push('/dashboard/admin');
         toast.success(isTaker ? 'অ্যাপয়েন্টমেন্ট টেকার হিসেবে লগইন!' : 'অ্যাডমিন হিসেবে লগইন!');
         setLoading(false);
@@ -51,6 +53,7 @@ export default function Login() {
     if (doctor && doctor.passcode === password.trim()) {
       localStorage.setItem('userRole', 'doctor');
       localStorage.setItem('doctorData', JSON.stringify(doctor));
+      cacheUserEmail(doctor.email);
       router.push('/dashboard/doctor');
       toast.success('ডাক্তার হিসেবে লগইন!');
       setLoading(false);
@@ -66,6 +69,7 @@ export default function Login() {
     if (patient && patient.password === password.trim()) {
       localStorage.setItem('userRole', 'patient');
       localStorage.setItem('patientData', JSON.stringify(patient));
+      cacheUserEmail(patient.email);
       router.push('/dashboard/patient');
       toast.success('রোগী হিসেবে লগইন!');
       setLoading(false);

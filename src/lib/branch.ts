@@ -15,6 +15,27 @@ const SHYAMOLI_EMAILS = new Set([
 export const USER_EMAIL_KEY = 'userEmail';
 
 /**
+ * Cached at login, but sessions restored after a reload predate that key, so
+ * fall back to the role payloads the login page persists alongside it.
+ */
+function resolveEmail(): string | null {
+  try {
+    const direct = localStorage.getItem(USER_EMAIL_KEY);
+    if (direct) return direct.trim().toLowerCase();
+
+    for (const key of ['adminData', 'doctorData', 'patientData']) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const email = JSON.parse(raw)?.email;
+      if (email) return String(email).trim().toLowerCase();
+    }
+  } catch {
+    // storage or JSON unavailable
+  }
+  return null;
+}
+
+/**
  * Cache the signed-in email so invoice headers can be resolved synchronously.
  * CashMemo opens its print window synchronously (popup blockers require that),
  * so the header must be known before any async work starts.
@@ -29,13 +50,9 @@ export function cacheUserEmail(email?: string | null) {
 }
 
 export function getBranchId(): BranchId {
-  try {
-    const email = localStorage.getItem(USER_EMAIL_KEY)?.trim().toLowerCase();
-    if (email && CUMILLA_EMAILS.has(email)) return 'cumilla';
-    if (email && SHYAMOLI_EMAILS.has(email)) return 'shyamoli';
-  } catch {
-    // fall through to default
-  }
+  const email = resolveEmail();
+  if (email && CUMILLA_EMAILS.has(email)) return 'cumilla';
+  if (email && SHYAMOLI_EMAILS.has(email)) return 'shyamoli';
   return 'shyamoli';
 }
 
