@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getBranchFee } from '@/lib/branch';
+import { getBranchFee, UNKNOWN_FEE, type BranchId } from '@/lib/branch';
 
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
   throw new Error('Missing Supabase environment variables');
@@ -79,16 +79,16 @@ export const FEE_TYPES = [
   { value: 'report', label: 'Report Showing', amount: 0 },
 ] as const;
 
-export function getFeeAmount(feeType?: string): number {
-  const branchAmount = getBranchFee(feeType);
+export function getFeeAmount(feeType?: string, branch?: BranchId): number {
+  const branchAmount = getBranchFee(feeType, branch);
   if (branchAmount !== undefined) return branchAmount;
   const ft = FEE_TYPES.find(f => f.value === feeType);
-  return ft?.amount ?? 500;
+  return ft?.amount ?? UNKNOWN_FEE;
 }
 
-/** FEE_TYPES with the amounts resolved for the signed-in user's branch. */
-export function getFeeTypes() {
-  return FEE_TYPES.map(f => ({ ...f, amount: getBranchFee(f.value) ?? f.amount }));
+/** FEE_TYPES with the amounts resolved for a branch (defaults to the user's). */
+export function getFeeTypes(branch?: BranchId) {
+  return FEE_TYPES.map(f => ({ ...f, amount: getBranchFee(f.value, branch) ?? f.amount }));
 }
 
 export function getFeeTypePrefix(feeType?: string): string {

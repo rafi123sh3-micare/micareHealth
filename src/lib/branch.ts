@@ -112,3 +112,24 @@ export function getBranchFee(feeType?: string, branch: BranchId = getBranchId())
   if (!feeType) return undefined;
   return BRANCH_FEES[branch]?.[feeType];
 }
+
+/** Charged when an appointment carries an unrecognised fee type. */
+export const UNKNOWN_FEE = 500;
+
+/**
+ * Branch an appointment was billed under. Falls back to the signed-in user's
+ * branch for rows created before the branch column existed.
+ */
+export function getAptBranch(apt: any): BranchId {
+  const branch = apt?.branch;
+  return branch === 'cumilla' || branch === 'shyamoli' ? branch : getBranchId();
+}
+
+/**
+ * Fee for a specific appointment. Keyed off the appointment's own branch (not
+ * the viewer's), so a Cumilla booking shows 700/500 to every account.
+ */
+export function getAptFee(apt: any): number {
+  const fee = getBranchFee(apt?.fee_type, getAptBranch(apt));
+  return fee !== undefined ? fee : UNKNOWN_FEE;
+}

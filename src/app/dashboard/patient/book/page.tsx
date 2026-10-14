@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Calendar, Clock, Video, ArrowLeft, ArrowRight, Check, Stethoscope, DollarSign, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase, getDoctors, FEE_TYPES, getFeeTypes, getFeeAmount } from '@/lib/supabase';
+import { getBranchId } from '@/lib/branch';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
@@ -195,6 +196,7 @@ export default function PatientBook() {
         type: consultType,
         fee_type: feeType,
         teleconsult_link: consultType === 'teleconsult' ? selectedDoctor?.zoom_link || null : null,
+        branch: getBranchId(),
       };
 
       const { data: appointment, error } = await supabase

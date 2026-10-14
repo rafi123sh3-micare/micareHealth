@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Users, Video, Wallet, Plus, Download } from 'lucide-react';
 import { supabase, FEE_TYPES, getFeeAmount } from '@/lib/supabase';
+import { getAptFee } from '@/lib/branch';
 import { generateReportPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { compareBySerialNumber } from '@/lib/sms';
 import { Card } from '@/components/ui/Card';
@@ -118,8 +119,8 @@ export default function AdminReports() {
       advance: apt.advance || 0,
       paid: Math.max(0, (apt.paid || 0) - (apt.refunded || 0)),
       refunded: apt.refunded || 0,
-      netPayble: getFeeAmount(apt.fee_type) - (apt.refunded || 0),
-      due: (getFeeAmount(apt.fee_type) - (apt.refunded || 0)) - (apt.paid || 0),
+      netPayble: getAptFee(apt) - (apt.refunded || 0),
+      due: (getAptFee(apt) - (apt.refunded || 0)) - (apt.paid || 0),
     };
   }
 

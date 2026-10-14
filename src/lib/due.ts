@@ -1,8 +1,9 @@
-import { supabase, getFeeAmount } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { getAptFee } from '@/lib/branch';
 
 /** Outstanding balance on a single appointment. Mirrors the Due column formula. */
 export function computeDue(apt: any): number {
-  return Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0));
+  return Math.max(0, getAptFee(apt) - (apt.refunded || 0) - (apt.paid || 0));
 }
 
 /**
@@ -13,7 +14,7 @@ export function computeDue(apt: any): number {
 export async function getPatientDue(patientId: string): Promise<number> {
   const { data, error } = await supabase
     .from('appointments')
-    .select('status, fee_type, paid, refunded')
+    .select('status, fee_type, paid, refunded, branch')
     .eq('patient_id', patientId)
     .neq('status', 'cancelled');
 

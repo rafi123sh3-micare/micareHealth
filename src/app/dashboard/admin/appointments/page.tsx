@@ -10,6 +10,7 @@ import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
 import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { getPatientDue } from '@/lib/due';
+import { getBranchId } from '@/lib/branch';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { setCache, getCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
@@ -992,6 +993,7 @@ try {
         advance: walkinPatient.advance,
         paid: walkinPatient.advance,
         booked_by: receptionistName,
+        branch: getBranchId(),
       });
 
       if (aptError) {
