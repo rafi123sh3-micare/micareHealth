@@ -97,3 +97,18 @@ const HEADERS: Record<BranchId, BranchHeader> = {
 export function getBranchHeader(): BranchHeader {
   return HEADERS[getBranchId()];
 }
+
+/**
+ * Consultation fees differ per branch: Cumilla charges less than Shyamoli.
+ * Keep these in one place — every Due, Paid and report total derives from them.
+ */
+export const BRANCH_FEES: Record<BranchId, Record<string, number>> = {
+  cumilla: { new: 700, follow_up: 500, report: 0 },
+  shyamoli: { new: 1000, follow_up: 700, report: 0 },
+};
+
+/** Fee for a fee type at a given branch; undefined when the type is unknown. */
+export function getBranchFee(feeType?: string, branch: BranchId = getBranchId()): number | undefined {
+  if (!feeType) return undefined;
+  return BRANCH_FEES[branch]?.[feeType];
+}

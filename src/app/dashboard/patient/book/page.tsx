@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Calendar, Clock, Video, ArrowLeft, ArrowRight, Check, Stethoscope, DollarSign, User } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase, getDoctors, FEE_TYPES } from '@/lib/supabase';
+import { supabase, getDoctors, FEE_TYPES, getFeeTypes, getFeeAmount } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
@@ -415,7 +415,7 @@ export default function PatientBook() {
                 রোগীর ধরন
               </h2>
               <div className="grid grid-cols-3 gap-3">
-                {FEE_TYPES.map((ft) => (
+                {getFeeTypes().map((ft) => (
                   <button
                     key={ft.value}
                     onClick={() => setFeeType(ft.value)}
@@ -577,7 +577,7 @@ export default function PatientBook() {
                 </div>
                 <div className="flex items-center justify-between py-4 bg-primary-50 rounded-xl px-4 -mx-4">
                   <span className="font-semibold text-slate-900">মোট ফি</span>
-                  <span className="text-2xl font-bold text-primary-600">৳{FEE_TYPES.find(f => f.value === feeType)?.amount || selectedDoctor.fee}</span>
+                  <span className="text-2xl font-bold text-primary-600">৳{getFeeAmount(feeType) || selectedDoctor.fee}</span>
                 </div>
               </div>
             </Card>

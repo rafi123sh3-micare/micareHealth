@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Calendar, Clock, Video, X, ChevronRight, FileText, Search, Printer, Receipt } from 'lucide-react';
 import Link from 'next/link';
-import { supabase, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
+import { supabase, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
@@ -618,7 +618,7 @@ const statusOrder: Record<string, number> = {
                <div>
                  <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
                  <div className="grid grid-cols-3 gap-2">
-                   {FEE_TYPES.map((ft) => (
+                   {getFeeTypes().map((ft) => (
                      <button key={ft.value} type="button" onClick={() => { setEditFeeType(ft.value); if (editAdvance > getFeeAmount(ft.value)) setEditAdvance(getFeeAmount(ft.value)); }}
                        className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${editFeeType === ft.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-slate-300'}`}>
                        <div className="font-semibold">{ft.label}</div>

@@ -8,7 +8,7 @@ import { Search, Calendar, Clock, Video, X, FileText, ChevronDown, ChevronRight,
 import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
-import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
+import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { Card } from '@/components/ui/Card';
@@ -1517,7 +1517,7 @@ const statusOrder: Record<string, number> = {
           <div>
             <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
             <div className="grid grid-cols-3 gap-2">
-              {FEE_TYPES.map((ft) => (
+              {getFeeTypes().map((ft) => (
                 <button key={ft.value} type="button" onClick={() => setWalkinPatient({...walkinPatient, fee_type: ft.value})}
                   className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${walkinPatient.fee_type === ft.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-slate-300'}`}>
                   <div className="font-semibold">{ft.label}</div>
@@ -1696,7 +1696,7 @@ const statusOrder: Record<string, number> = {
             <div>
               <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
               <div className="grid grid-cols-3 gap-2">
-                {FEE_TYPES.map((ft) => (
+                {getFeeTypes().map((ft) => (
                   <button
                     key={ft.value}
                     type="button"

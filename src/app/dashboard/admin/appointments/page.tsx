@@ -7,7 +7,7 @@ import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
-import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeAmount, numberToWords } from '@/lib/supabase';
+import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { getPatientDue } from '@/lib/due';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
@@ -2069,7 +2069,7 @@ try {
           <div>
             <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
             <div className="grid grid-cols-3 gap-2">
-              {FEE_TYPES.map((ft) => (
+              {getFeeTypes().map((ft) => (
                 <button
                   key={ft.value}
                   type="button"
@@ -2550,7 +2550,7 @@ try {
             <div>
               <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
               <div className="grid grid-cols-3 gap-2">
-                {FEE_TYPES.map((ft) => (
+                {getFeeTypes().map((ft) => (
                   <button
                     key={ft.value}
                     type="button"
