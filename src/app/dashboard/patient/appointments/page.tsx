@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Calendar, Clock, Video, X, ChevronRight, FileText, Search, Printer, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
+import { getAptFee, getAptBranch } from '@/lib/branch';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
@@ -262,7 +263,7 @@ const statusOrder: Record<string, number> = {
     const today = new Date();
     const dateStr = today.toLocaleDateString('en-GB');
     const billNo = `INV-${apt.serial_number || apt.id?.substring(0, 8) || '0000'}-${today.getTime().toString().slice(-4)}`;
-    const feeAmt = getFeeAmount(apt.fee_type);
+    const feeAmt = getAptFee(apt);
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
     const advancePaid = apt.paid || 0;
     const refundedAmt = apt.refunded || 0;
@@ -618,8 +619,8 @@ const statusOrder: Record<string, number> = {
                <div>
                  <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
                  <div className="grid grid-cols-3 gap-2">
-                   {getFeeTypes().map((ft) => (
-                     <button key={ft.value} type="button" onClick={() => { setEditFeeType(ft.value); if (editAdvance > getFeeAmount(ft.value)) setEditAdvance(getFeeAmount(ft.value)); }}
+                    {getFeeTypes(getAptBranch(editInvoiceApt)).map((ft) => (
+                      <button key={ft.value} type="button" onClick={() => { setEditFeeType(ft.value); if (editAdvance > getFeeAmount(ft.value, getAptBranch(editInvoiceApt))) setEditAdvance(getFeeAmount(ft.value, getAptBranch(editInvoiceApt))); }}
                        className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${editFeeType === ft.value ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 hover:border-slate-300'}`}>
                        <div className="font-semibold">{ft.label}</div>
                        <div className="text-xs mt-0.5 opacity-75">৳{ft.amount}</div>
@@ -631,18 +632,18 @@ const statusOrder: Record<string, number> = {
                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
                  <div>
                    <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
-                   <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editFeeType)}</div>
-                 </div>
-                 <div>
-                   <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
-                   <input
-                     type="number"
-                     min={0}
-                     max={getFeeAmount(editFeeType)}
-                      value={editAdvance || ''}
-                      placeholder="০"
-                      onChange={(e) => {
-                        const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editFeeType));
+                    <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editFeeType, getAptBranch(editInvoiceApt))}</div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={getFeeAmount(editFeeType, getAptBranch(editInvoiceApt))}
+                       value={editAdvance || ''}
+                       placeholder="০"
+                       onChange={(e) => {
+                         const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editFeeType, getAptBranch(editInvoiceApt)));
                         setEditAdvance(val);
                       }}
                      className="input w-full text-center font-semibold"
@@ -650,7 +651,7 @@ const statusOrder: Record<string, number> = {
                  </div>
                  <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
                    <span className="text-slate-500">বাকি (Due):</span>
-                   <span className="font-bold text-primary-600">৳{getFeeAmount(editFeeType) - editAdvance}</span>
+                    <span className="font-bold text-primary-600">৳{getFeeAmount(editFeeType, getAptBranch(editInvoiceApt)) - editAdvance}</span>
                  </div>
                </div>
 

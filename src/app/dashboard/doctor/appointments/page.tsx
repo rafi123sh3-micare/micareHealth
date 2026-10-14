@@ -9,7 +9,7 @@ import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
 import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
-import { getBranchId } from '@/lib/branch';
+import { getBranchId, getAptFee, getAptBranch } from '@/lib/branch';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { Card } from '@/components/ui/Card';
@@ -405,8 +405,8 @@ const statusOrder: Record<string, number> = {
         apt.booked_by,
         statusLabel,
         String(apt.paid || 0), String(apt.refunded || 0),
-        String(Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))),
-        String(getFeeAmount(apt.fee_type) - (apt.refunded || 0)),
+        String(Math.max(0, getAptFee(apt) - (apt.refunded || 0) - (apt.paid || 0))),
+        String(getAptFee(apt) - (apt.refunded || 0)),
       ].filter(Boolean).join(' ').toLowerCase();
       const variants = [searchLower];
       const numRuns = searchLower.match(/[0-9]+/g);
@@ -817,7 +817,7 @@ const statusOrder: Record<string, number> = {
     return <StatusPill status={displayStatus as any} />;
   };
 
-  const getDue = (apt: any) => Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0));
+  const getDue = (apt: any) => Math.max(0, getAptFee(apt) - (apt.refunded || 0) - (apt.paid || 0));
 
   const handleOpenSMS = (apt: any) => {
     setSmsAppointment(apt);
@@ -1177,7 +1177,7 @@ const statusOrder: Record<string, number> = {
     const today = new Date();
     const dateStr = today.toLocaleDateString('en-GB');
     const billNo = `INV-${apt.serial_number || apt.id?.substring(0, 8) || '0000'}-${today.getTime().toString().slice(-4)}`;
-    const feeAmt = getFeeAmount(apt.fee_type);
+    const feeAmt = getAptFee(apt);
     const feeLabel = FEE_TYPES.find(f => f.value === apt.fee_type)?.label || 'Consultation';
     const paidAmt = apt.paid || 0;
     const refundedAmt = apt.refunded || 0;
@@ -1388,8 +1388,8 @@ const statusOrder: Record<string, number> = {
                       )}
                       <td className="px-4 py-3 text-right font-medium text-emerald-600">৳{Math.max(0, (apt.paid || 0) - (apt.refunded || 0))}</td>
                       <td className="px-4 py-3 text-right font-medium text-red-500">৳{apt.refunded || 0}</td>
-                       <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getFeeAmount(apt.fee_type) - (apt.refunded || 0) - (apt.paid || 0))}</td>
-                       <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getFeeAmount(apt.fee_type) - (apt.refunded || 0)}</td>
+                       <td className="px-4 py-3 text-right font-medium text-amber-600">৳{Math.max(0, getAptFee(apt) - (apt.refunded || 0) - (apt.paid || 0))}</td>
+                       <td className="px-4 py-3 text-right font-medium text-slate-900">৳{getAptFee(apt) - (apt.refunded || 0)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {apt.status !== 'completed' && (
@@ -1481,7 +1481,7 @@ const statusOrder: Record<string, number> = {
               </div>
               <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
                 <span className="text-slate-500">নেট (Net):</span>
-                <span className="font-bold text-primary-600">৳{getFeeAmount(editInvoiceApt.fee_type) - (editRefunded || 0)}</span>
+                <span className="font-bold text-primary-600">৳{getAptFee(editInvoiceApt) - (editRefunded || 0)}</span>
               </div>
               <p className="col-span-2 text-[11px] text-slate-400 leading-snug">
                 Refund দিলে পরিশোধ (Paid) স্বয়ংক্রিয়ভাবে হিসাব হবে <span className="font-medium text-slate-500">Paid − Refund</span>
@@ -1698,11 +1698,11 @@ const statusOrder: Record<string, number> = {
             <div>
               <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
               <div className="grid grid-cols-3 gap-2">
-                {getFeeTypes().map((ft) => (
+                {getFeeTypes(getAptBranch(editPatientApt)).map((ft) => (
                   <button
                     key={ft.value}
                     type="button"
-                    onClick={() => setEditApptForm({ ...editApptForm, fee_type: ft.value, advance: Math.min(editApptForm.advance, getFeeAmount(ft.value)) })}
+                    onClick={() => setEditApptForm({ ...editApptForm, fee_type: ft.value, advance: Math.min(editApptForm.advance, getFeeAmount(ft.value, getAptBranch(editPatientApt))) })}
                     className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${
                       editApptForm.fee_type === ft.value
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
@@ -1719,18 +1719,18 @@ const statusOrder: Record<string, number> = {
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
-                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editApptForm.fee_type)}</div>
+                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(editApptForm.fee_type, getAptBranch(editPatientApt))}</div>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
                 <input
                   type="number"
                   min={0}
-                  max={getFeeAmount(editApptForm.fee_type)}
+                  max={getFeeAmount(editApptForm.fee_type, getAptBranch(editPatientApt))}
                   value={editApptForm.advance || ''}
                   placeholder="০"
                   onChange={(e) => {
-                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editApptForm.fee_type));
+                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(editApptForm.fee_type, getAptBranch(editPatientApt)));
                     setEditApptForm({ ...editApptForm, advance: val });
                   }}
                   className="input w-full text-center font-semibold"
@@ -1738,7 +1738,7 @@ const statusOrder: Record<string, number> = {
               </div>
               <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
                 <span className="text-slate-500">বাকি (Due):</span>
-                <span className="font-bold text-primary-600">৳{getFeeAmount(editApptForm.fee_type) - editApptForm.advance}</span>
+                <span className="font-bold text-primary-600">৳{getFeeAmount(editApptForm.fee_type, getAptBranch(editPatientApt)) - editApptForm.advance}</span>
               </div>
             </div>
 
