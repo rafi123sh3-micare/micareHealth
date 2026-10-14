@@ -9,7 +9,7 @@ import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
 import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
-import { getBranchId, getAptFee, getAptBranch } from '@/lib/branch';
+import { getBranchId, getAptFee, getAptBranch, getSessionStart } from '@/lib/branch';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { Card } from '@/components/ui/Card';
@@ -369,8 +369,8 @@ const statusOrder: Record<string, number> = {
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
       const sorted = [...group].sort(compareBySerialNumber);
-      const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
-      const firstTime = (baseScheduleStart || sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
+      const first = sorted[0];
+      const firstTime = getSessionStart(first?.branch, first?.date).split(':').map(Number);
       const baseHours = firstTime[0] || 9;
       const baseMinutes = firstTime[1] || 0;
       sorted.forEach((apt, idx) => {
@@ -424,15 +424,12 @@ const statusOrder: Record<string, number> = {
   })
     .sort(compareBySerialNumber);
 
-  // Base time used by the SMS expected-time calculation — the doctor's schedule start for
-  // the date, falling back to the earliest appointment's time in the group (same as the table).
+  // Base time used by the SMS expected-time calculation — the branch's session
+  // start for the date (Cumilla Wed 11:00 / Thu 14:00, Shyamoli 17:00).
   const getExpectedBaseTime = (doctorId: string, date: string): string => {
     const group = appointments.filter(a => a.doctor_id === doctorId && a.date === date);
     const sorted = [...group].sort(compareBySerialNumber);
-    const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
-    if (baseScheduleStart) return baseScheduleStart;
-    const firstTime = sorted.find(a => a.time)?.time;
-    return (firstTime || '09:00').split(' - ')[0];
+    return getSessionStart(sorted[0]?.branch, date);
   };
 
   const formatDate = (dateStr: string) => {
@@ -537,46 +534,13 @@ const statusOrder: Record<string, number> = {
           });
         } catch (e) {}
 
-        let scheduleStart = null;
-        try {
-          const { data: scheduleData } = await supabase
-            .from('schedules')
-            .select('start_time, selected_days, start_date, end_date, date')
-            .eq('doctor_id', apt.doctor_id)
-            .eq('status', 'active');
-
-          if (scheduleData && scheduleData.length > 0) {
-            let match: any = null;
-            const oldMatch = scheduleData.find((s: any) => s.date === apt.date);
-            if (oldMatch) {
-              match = oldMatch;
-            } else {
-              const dayMap: Record<number, string> = { 0: 'রবিবার', 1: 'সোমবার', 2: 'মঙ্গলবার', 3: 'বুধবার', 4: 'বৃহস্পতিবার', 5: 'শুক্রবার', 6: 'শনিবার' };
-              const aptDate = new Date(apt.date + 'T00:00:00');
-              const dayName = dayMap[aptDate.getDay()];
-              const dayMatch = scheduleData.find((s: any) => {
-                if (!s.selected_days?.includes(dayName)) return false;
-                const startOk = s.start_date ? new Date(s.start_date + 'T00:00:00') <= aptDate : true;
-                const endOk = s.end_date ? new Date(s.end_date + 'T00:00:00') >= aptDate : true;
-                return startOk && endOk;
-              });
-              if (dayMatch) match = dayMatch;
-            }
-            if (match && match.start_time) {
-              scheduleStart = match.start_time.substring(0, 5);
-            }
-          }
-        } catch (e) {
-          console.error('Error fetching schedule start in updateStatus:', e);
-        }
-
         try {
           const patientPhone = apt.patients?.phone;
           if (patientPhone) {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
               apt.date,
-              scheduleStart || getExpectedBaseTime(apt.doctor_id, apt.date),
+              getExpectedBaseTime(apt.doctor_id, apt.date),
               updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);

@@ -10,7 +10,7 @@ import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
 import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { getPatientDue } from '@/lib/due';
-import { getBranchId, getAptFee, getAptBranch } from '@/lib/branch';
+import { getBranchId, getAptFee, getAptBranch, getSessionStart } from '@/lib/branch';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { setCache, getCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
@@ -609,8 +609,8 @@ export default function AdminAppointments() {
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
       const sorted = [...group].sort(compareBySerialNumber);
-      const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
-      const firstTime = (baseScheduleStart || sorted[0]?.time || '09:00').split(' - ')[0].split(':').map(Number);
+      const first = sorted[0];
+      const firstTime = getSessionStart(first?.branch, first?.date).split(':').map(Number);
       const baseHours = firstTime[0] || 9;
       const baseMinutes = firstTime[1] || 0;
       sorted.forEach((apt, idx) => {
@@ -666,15 +666,12 @@ export default function AdminAppointments() {
   })
     .sort(compareBySerialNumber);
 
-  // Base time used by the SMS expected-time calculation — the doctor's schedule start for
-  // the date, falling back to the earliest appointment's time in the group (same as the table).
+  // Base time used by the SMS expected-time calculation — the branch's session
+  // start for the date (Cumilla Wed 11:00 / Thu 14:00, Shyamoli 17:00).
   const getExpectedBaseTime = (doctorId: string, date: string): string => {
     const group = appointments.filter(a => a.doctor_id === doctorId && a.date === date);
     const sorted = [...group].sort(compareBySerialNumber);
-    const baseScheduleStart = sorted.find(a => a.scheduleStart)?.scheduleStart;
-    if (baseScheduleStart) return baseScheduleStart;
-    const firstTime = sorted.find(a => a.time)?.time;
-    return (firstTime || '09:00').split(' - ')[0];
+    return getSessionStart(sorted[0]?.branch, date);
   };
 
   const formatDate = (dateStr: string) => {
@@ -1044,7 +1041,7 @@ try {
           const smsText = buildConfirmationSMS(
             walkinDoctor?.name || '',
             walkinPatient.date,
-            scheduleStart || getExpectedBaseTime(walkinPatient.doctor_id, walkinPatient.date),
+            getSessionStart(getBranchId(), walkinPatient.date),
             serialNumber || ''
           );
           await sendSMS(walkinPatient.phone, smsText);

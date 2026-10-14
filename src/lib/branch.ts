@@ -117,6 +117,25 @@ export function getBranchFee(feeType?: string, branch: BranchId = getBranchId())
 export const UNKNOWN_FEE = 500;
 
 /**
+ * Chamber session start times. The expected (queue) time counts up from here at
+ * 5 minutes per serial, so this — not the doctor's schedule — decides it.
+ * Cumilla runs Wed 11:00 and Thu 14:00; Shyamoli starts at 17:00 every day.
+ */
+export const BRANCH_SESSIONS: Record<BranchId, { byWeekday: Partial<Record<number, string>>; default: string }> = {
+  cumilla: { byWeekday: { 3: '11:00', 4: '14:00' }, default: '11:00' },
+  shyamoli: { byWeekday: {}, default: '17:00' },
+};
+
+/** Session start ("HH:MM") for a branch on a YYYY-MM-DD date (weekday aware). */
+export function getSessionStart(branch: BranchId | string | undefined, date: string): string {
+  const b: BranchId = branch === 'cumilla' ? 'cumilla' : 'shyamoli';
+  const cfg = BRANCH_SESSIONS[b];
+  const d = new Date(`${date}T00:00:00`);
+  const weekday = isNaN(d.getTime()) ? -1 : d.getDay();
+  return cfg.byWeekday[weekday] || cfg.default;
+}
+
+/**
  * Branch an appointment was billed under. Falls back to the signed-in user's
  * branch for rows created before the branch column existed.
  */
