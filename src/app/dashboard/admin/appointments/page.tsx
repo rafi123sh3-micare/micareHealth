@@ -667,7 +667,7 @@ export default function AdminAppointments() {
     .sort(compareBySerialNumber);
 
   // Base time used by the SMS expected-time calculation — the branch's session
-  // start for the date (Cumilla Wed 11:00 / Thu 14:00, Shyamoli 17:00).
+  // start for the date (Cumilla Wed 11:00 / Thu 13:00, Shyamoli 17:00).
   const getExpectedBaseTime = (doctorId: string, date: string): string => {
     const group = appointments.filter(a => a.doctor_id === doctorId && a.date === date);
     const sorted = [...group].sort(compareBySerialNumber);

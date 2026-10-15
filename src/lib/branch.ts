@@ -75,9 +75,9 @@ const HEADERS: Record<BranchId, BranchHeader> = {
     address:
       'Cumilla Trauma Centre, 7th Floor (Lift 6), New Building, Nazrul Avenue, Cumilla.',
     contact:
-      'Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd',
+      'Wed: 11:00 AM - 5:00 PM | Thu: 1:00 PM - 7:00 PM | Tel: +8801841960102, +8801841960103 | info@micare.com.bd | www.micare.com.bd',
     contactLines: [
-      'Wed: 11:00 AM - 5:00 PM | Thu: 2:00 PM - 7:00 PM',
+      'Wed: 11:00 AM - 5:00 PM | Thu: 1:00 PM - 7:00 PM',
       'Tel: +8801841960102, +8801841960103',
       'Email: info@micare.com.bd | Web: www.micare.com.bd',
     ],
@@ -119,10 +119,10 @@ export const UNKNOWN_FEE = 500;
 /**
  * Chamber session start times. The expected (queue) time counts up from here at
  * 5 minutes per serial, so this — not the doctor's schedule — decides it.
- * Cumilla runs Wed 11:00 and Thu 14:00; Shyamoli starts at 17:00 every day.
+ * Cumilla runs Wed 11:00 and Thu 13:00; Shyamoli starts at 17:00 every day.
  */
 export const BRANCH_SESSIONS: Record<BranchId, { byWeekday: Partial<Record<number, string>>; default: string }> = {
-  cumilla: { byWeekday: { 3: '11:00', 4: '14:00' }, default: '11:00' },
+  cumilla: { byWeekday: { 3: '11:00', 4: '13:00' }, default: '11:00' },
   shyamoli: { byWeekday: {}, default: '17:00' },
 };
 
