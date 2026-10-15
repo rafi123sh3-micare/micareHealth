@@ -75,34 +75,34 @@ export function AppointmentSlip({
         </div>
       </div>
 
-      <div className="space-y-2.5 text-sm">
+      <div className="space-y-3 text-lg font-bold text-slate-800">
         <div className="flex gap-2">
-          <span className="font-semibold text-slate-600 min-w-[100px]">Patient Serial:</span>
-          <span className="text-slate-800 font-mono font-semibold">{patientSerial || '-'}</span>
+          <span className="font-bold text-slate-700 min-w-[130px]">Patient Serial:</span>
+          <span className="text-slate-900 font-mono font-bold">{patientSerial || '-'}</span>
         </div>
         <div className="flex gap-2">
-          <span className="font-semibold text-slate-600 min-w-[100px]">Patient Name:</span>
-          <span className="text-slate-800 font-medium">{patientName}</span>
+          <span className="font-bold text-slate-700 min-w-[130px]">Patient Name:</span>
+          <span className="text-slate-900 font-bold">{patientName}</span>
         </div>
         <div className="flex gap-2">
-          <span className="font-semibold text-slate-600 min-w-[100px]">Gender:</span>
-          <span className="text-slate-800">{patientGender.charAt(0).toUpperCase() + patientGender.slice(1)}</span>
-          <span className="font-semibold text-slate-600 ml-4">Age:</span>
-          <span className="text-slate-800">{patientAge || '-'}</span>
+          <span className="font-bold text-slate-700 min-w-[130px]">Gender:</span>
+          <span className="text-slate-900 font-bold">{patientGender.charAt(0).toUpperCase() + patientGender.slice(1)}</span>
+          <span className="font-bold text-slate-700 ml-4">Age:</span>
+          <span className="text-slate-900 font-bold">{patientAge || '-'}</span>
         </div>
         <div className="flex gap-2">
-          <span className="font-semibold text-slate-600 min-w-[100px]">Phone:</span>
-          <span className="text-slate-800">{patientPhone || '-'}</span>
+          <span className="font-bold text-slate-700 min-w-[130px]">Phone:</span>
+          <span className="text-slate-900 font-bold">{patientPhone || '-'}</span>
         </div>
       </div>
 
       <div className="pt-3 border-t border-slate-200">
         <div className="flex gap-2">
-          <span className="font-semibold text-slate-600 min-w-[100px] shrink-0">Consultant:</span>
+          <span className="font-bold text-slate-700 min-w-[130px] shrink-0">Consultant:</span>
           <div className="min-w-0">
-            <p className="font-medium text-slate-800">{doctorName}</p>
+            <p className="font-bold text-lg text-slate-900">{doctorName}</p>
             {doctorDesignation && (
-              <p className="text-sm text-slate-600 mt-0.5 leading-relaxed whitespace-pre-line break-words">{doctorDesignation}</p>
+              <p className="text-base font-bold text-slate-700 mt-0.5 leading-relaxed whitespace-pre-line break-words">{doctorDesignation}</p>
             )}
           </div>
         </div>
