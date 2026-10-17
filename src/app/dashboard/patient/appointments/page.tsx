@@ -464,7 +464,7 @@ const statusOrder: Record<string, number> = {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-slate-400" />
-                    {apt.serial_number ? calculateExpectedTime(getSessionStart(apt.branch, apt.date), apt.serial_number) : apt.time_range}
+                    {apt.serial_number ? calculateExpectedTime(getSessionStart(getAptBranch(apt), apt.date), apt.serial_number) : apt.time_range}
                   </span>
                   <span className={`flex items-center gap-1.5 ${apt.type === 'teleconsult' ? 'text-purple-600' : ''}`}>
                     <span className="text-slate-500">ধরন:</span>
@@ -553,7 +553,7 @@ const statusOrder: Record<string, number> = {
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl">
                   <p className="text-sm text-slate-500 mb-1">প্রত্যাশিত সময়</p>
-                  <p className="font-semibold">{selectedApt.serial_number ? calculateExpectedTime(getSessionStart(selectedApt.branch, selectedApt.date), selectedApt.serial_number) : selectedApt.time_range}</p>
+                  <p className="font-semibold">{selectedApt.serial_number ? calculateExpectedTime(getSessionStart(getAptBranch(selectedApt), selectedApt.date), selectedApt.serial_number) : selectedApt.time_range}</p>
                 </div>
               </div>
               {(selectedApt.status === 'confirmed' || selectedApt.status === 'completed') ? (

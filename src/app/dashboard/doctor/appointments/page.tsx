@@ -370,7 +370,7 @@ const statusOrder: Record<string, number> = {
     Object.values(groups).forEach((group: any[]) => {
       const sorted = [...group].sort(compareBySerialNumber);
       const first = sorted[0];
-      const firstTime = getSessionStart(first?.branch, first?.date).split(':').map(Number);
+      const firstTime = getSessionStart(first ? getAptBranch(first) : undefined, first?.date).split(':').map(Number);
       const baseHours = firstTime[0] || 9;
       const baseMinutes = firstTime[1] || 0;
       sorted.forEach((apt, idx) => {
@@ -423,14 +423,6 @@ const statusOrder: Record<string, number> = {
     return true;
   })
     .sort(compareBySerialNumber);
-
-  // Base time used by the SMS expected-time calculation — the branch's session
-  // start for the date (Cumilla Wed 11:00 / Thu 13:00, Shyamoli 17:00).
-  const getExpectedBaseTime = (doctorId: string, date: string): string => {
-    const group = appointments.filter(a => a.doctor_id === doctorId && a.date === date);
-    const sorted = [...group].sort(compareBySerialNumber);
-    return getSessionStart(sorted[0]?.branch, date);
-  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -540,7 +532,7 @@ const statusOrder: Record<string, number> = {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
               apt.date,
-              getExpectedBaseTime(apt.doctor_id, apt.date),
+              getSessionStart(getAptBranch(apt), apt.date),
               updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);
@@ -648,7 +640,7 @@ const statusOrder: Record<string, number> = {
       if (newStatus === 'confirmed') {
         try { await sendNotification('appointment_confirmed_patient', { patientId: apt.patient_id }, { patientName: apt.patients?.name, doctorName: apt.doctors?.name, date: apt.date }); } catch(e) {}
         try { await sendNotification('appointment_confirmed_doctor', { doctorId: apt.doctor_id }, { patientName: apt.patients?.name, date: apt.date }); } catch(e) {}
-        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', apt.date, getExpectedBaseTime(apt.doctor_id, apt.date), apt.serial_number||'')); } } catch(e) {}
+        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', apt.date, getSessionStart(getAptBranch(apt), apt.date), apt.serial_number||'')); } } catch(e) {}
       }
       toast.success(newStatus === 'confirmed' ? 'নিশ্চিত হয়েছে' : 'অপেক্ষায় সেট করা হয়েছে');
       loadAppointments();
@@ -788,7 +780,7 @@ const statusOrder: Record<string, number> = {
     setSmsMessage(buildConfirmationSMS(
       apt.doctors?.name || apt.doctorName || '',
       apt.date,
-      getExpectedBaseTime(apt.doctor_id, apt.date),
+      getSessionStart(getAptBranch(apt), apt.date),
       apt.serial_number || ''
     ));
     setShowSMSModal(true);
@@ -1752,7 +1744,7 @@ const statusOrder: Record<string, number> = {
               <div>
                 <p className="text-xs text-slate-500">প্রত্যাশিত সময়</p>
                 <p className="font-semibold text-primary-700">
-                  {calculateExpectedTime(getExpectedBaseTime(smsAppointment.doctor_id, smsAppointment.date), smsAppointment.serial_number || '')}
+                  {calculateExpectedTime(getSessionStart(getAptBranch(smsAppointment), smsAppointment.date), smsAppointment.serial_number || '')}
                 </p>
               </div>
             </div>
