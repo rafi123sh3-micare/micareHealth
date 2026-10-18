@@ -368,18 +368,10 @@ const statusOrder: Record<string, number> = {
     });
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
-      const sorted = [...group].sort(compareBySerialNumber);
-      const first = sorted[0];
-      const firstTime = getSessionStart(first ? getAptBranch(first) : undefined, first?.date).split(':').map(Number);
-      const baseHours = firstTime[0] || 9;
-      const baseMinutes = firstTime[1] || 0;
-      sorted.forEach((apt, idx) => {
-        const totalMin = baseHours * 60 + baseMinutes + idx * 5;
-        const h = Math.floor(totalMin / 60) % 24;
-        const m = totalMin % 60;
-        const period = h >= 12 ? 'PM' : 'AM';
-        const disp = h % 12 || 12;
-        times[apt.id] = `${String(disp).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+      const first = [...group].sort(compareBySerialNumber)[0];
+      const base = getSessionStart(first ? getAptBranch(first) : undefined, first?.date);
+      group.forEach((apt) => {
+        times[apt.id] = calculateExpectedTime(base, apt.serial_number || '1');
       });
     });
     return times;

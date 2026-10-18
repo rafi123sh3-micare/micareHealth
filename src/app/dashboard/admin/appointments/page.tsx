@@ -477,26 +477,20 @@ export default function AdminAppointments() {
   }
 
   async function loadData(useCache = true) {
-    const today = getLocalDateString();
-
-    // Try cache first
+    // Doctors can paint instantly from cache; appointments are always fetched
+    // fresh so the list can never briefly show a stale/older window.
     if (useCache) {
-      const cached = getCache<any[]>('admin_appointments');
-      if (cached) {
-        setAppointments(cached);
-      }
       const cachedDocs = getCache<any[]>('admin_doctors');
       if (cachedDocs) {
         setDoctors(cachedDocs);
       }
     }
 
-    // Fetch fresh data (newest first so they are never truncated by the limit)
+    // Fetch fresh data (the selected day is filtered client-side below).
     const { data: apts, error: aptError } = await supabase
       .from('appointments')
       .select('*, doctors(name, specialization), patients(name, phone, age, sex)')
-      .order('created_at', { ascending: false })
-      .limit(500);
+      .order('created_at', { ascending: false });
 
     if (aptError) {
       console.error('Error fetching appointments:', aptError);
@@ -573,7 +567,6 @@ export default function AdminAppointments() {
       const sorted = mapped.sort(compareBySerialNumber);
 
       setAppointments(sorted);
-      setCache('admin_appointments', sorted);
 
       const vitalsMap: Record<string, VitalsData> = {};
       for (const apt of sorted) {
@@ -608,18 +601,10 @@ export default function AdminAppointments() {
     });
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
-      const sorted = [...group].sort(compareBySerialNumber);
-      const first = sorted[0];
-      const firstTime = getSessionStart(first ? getAptBranch(first) : undefined, first?.date).split(':').map(Number);
-      const baseHours = firstTime[0] || 9;
-      const baseMinutes = firstTime[1] || 0;
-      sorted.forEach((apt, idx) => {
-        const totalMin = baseHours * 60 + baseMinutes + idx * 5;
-        const h = Math.floor(totalMin / 60) % 24;
-        const m = totalMin % 60;
-        const period = h >= 12 ? 'PM' : 'AM';
-        const disp = h % 12 || 12;
-        times[apt.id] = `${String(disp).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+      const first = [...group].sort(compareBySerialNumber)[0];
+      const base = getSessionStart(first ? getAptBranch(first) : undefined, first?.date);
+      group.forEach((apt) => {
+        times[apt.id] = calculateExpectedTime(base, apt.serial_number || '1');
       });
     });
     return times;
