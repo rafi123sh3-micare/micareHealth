@@ -117,22 +117,49 @@ export function getBranchFee(feeType?: string, branch: BranchId = getBranchId())
 export const UNKNOWN_FEE = 500;
 
 /**
- * Chamber session start times. The expected (queue) time counts up from here at
- * 5 minutes per serial, so this — not the doctor's schedule — decides it.
- * Cumilla runs Wed 11:00 and Thu 13:00; Shyamoli starts at 17:00 every day.
+ * A chamber session. The expected (queue) time counts up from `start` at 5
+ * minutes per serial. `capacity` is the number of serials the session takes
+ * before the next session begins; omit it for a session that takes the rest.
  */
-export const BRANCH_SESSIONS: Record<BranchId, { byWeekday: Partial<Record<number, string>>; default: string }> = {
-  cumilla: { byWeekday: { 3: '11:00', 4: '13:00' }, default: '11:00' },
-  shyamoli: { byWeekday: {}, default: '17:00' },
+export interface SessionSlot {
+  start: string;
+  capacity?: number;
+}
+
+/**
+ * Chamber sessions per branch/day. Cumilla runs a single session (Wed 11:00,
+ * Thu 13:00). Shyamoli runs two: a fixed 20-seat morning block at 10:00 and an
+ * evening block from 17:00 that takes the overflow (and any extra bookings).
+ */
+export const BRANCH_SESSIONS: Record<
+  BranchId,
+  { byWeekday: Partial<Record<number, SessionSlot[]>>; default: SessionSlot[] }
+> = {
+  cumilla: {
+    byWeekday: { 3: [{ start: '11:00' }], 4: [{ start: '13:00' }] },
+    default: [{ start: '11:00' }],
+  },
+  shyamoli: {
+    byWeekday: {},
+    default: [{ start: '10:00', capacity: 20 }, { start: '17:00' }],
+  },
 };
 
-/** Session start ("HH:MM") for a branch on a YYYY-MM-DD date (weekday aware). */
-export function getSessionStart(branch: BranchId | string | undefined, date: string): string {
+function getWeekday(date: string): number {
+  const d = new Date(`${date}T00:00:00`);
+  return isNaN(d.getTime()) ? -1 : d.getDay();
+}
+
+/** Sessions ("HH:MM" starts + capacities) for a branch on a YYYY-MM-DD date. */
+export function getSessionSlots(branch: BranchId | string | undefined, date: string): SessionSlot[] {
   const b: BranchId = branch === 'cumilla' ? 'cumilla' : 'shyamoli';
   const cfg = BRANCH_SESSIONS[b];
-  const d = new Date(`${date}T00:00:00`);
-  const weekday = isNaN(d.getTime()) ? -1 : d.getDay();
-  return cfg.byWeekday[weekday] || cfg.default;
+  return cfg.byWeekday[getWeekday(date)] || cfg.default;
+}
+
+/** First session start ("HH:MM") for a branch on a YYYY-MM-DD date (weekday aware). */
+export function getSessionStart(branch: BranchId | string | undefined, date: string): string {
+  return getSessionSlots(branch, date)[0]?.start || '17:00';
 }
 
 /**

@@ -10,7 +10,7 @@ import { BarcodeScannerInput } from '@/components/ui/BarcodeScannerInput';
 import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { getPatientDue } from '@/lib/due';
-import { getBranchId, getAptFee, getAptBranch, getSessionStart } from '@/lib/branch';
+import { getBranchId, getAptFee, getAptBranch } from '@/lib/branch';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { setCache, getCache } from '@/lib/cache';
 import toast from 'react-hot-toast';
@@ -20,7 +20,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
 import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS, calculateExpectedTime, compareBySerialNumber } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateAppointmentExpectedTime, compareBySerialNumber } from '@/lib/sms';
 import DatePicker from '@/components/ui/DatePicker';
 import { motion } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
@@ -601,10 +601,12 @@ export default function AdminAppointments() {
     });
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
-      const first = [...group].sort(compareBySerialNumber)[0];
-      const base = getSessionStart(first ? getAptBranch(first) : undefined, first?.date);
       group.forEach((apt) => {
-        times[apt.id] = calculateExpectedTime(base, apt.serial_number || '1');
+        times[apt.id] = calculateAppointmentExpectedTime(
+          getAptBranch(apt),
+          apt.date,
+          apt.serial_number || '1'
+        );
       });
     });
     return times;
@@ -614,7 +616,7 @@ export default function AdminAppointments() {
 
   const filteredAppointments = appointments
     .filter(apt => {
-    if (filterDate && apt.date !== filterDate) return false;
+    if (filterDate && String(apt.date).slice(0, 10) !== filterDate) return false;
     if (filterDoctor && apt.doctor_id !== filterDoctor) return false;
     if (filterStatus && apt.status !== filterStatus && apt.displayStatus !== filterStatus) return false;
     if (filterUnpaid === 'yes' && (apt.paid || 0) > 0) return false;
@@ -767,8 +769,8 @@ export default function AdminAppointments() {
           if (patientPhone) {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
+              getAptBranch(apt),
               apt.date,
-              getSessionStart(getAptBranch(apt), apt.date),
               updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);
@@ -1017,8 +1019,8 @@ try {
         try {
           const smsText = buildConfirmationSMS(
             walkinDoctor?.name || '',
+            getBranchId(),
             walkinPatient.date,
-            getSessionStart(getBranchId(), walkinPatient.date),
             serialNumber || ''
           );
           await sendSMS(walkinPatient.phone, smsText);
@@ -1183,8 +1185,8 @@ try {
     setSmsAppointment(apt);
     setSmsMessage(buildConfirmationSMS(
       apt.doctors?.name || apt.doctorName || '',
+      getAptBranch(apt),
       apt.date,
-      getSessionStart(getAptBranch(apt), apt.date),
       apt.serial_number || ''
     ));
     setShowSMSModal(true);
@@ -2616,7 +2618,7 @@ try {
               <div>
                 <p className="text-xs text-slate-500">প্রত্যাশিত সময়</p>
                 <p className="font-semibold text-primary-700">
-                  {calculateExpectedTime(getSessionStart(getAptBranch(smsAppointment), smsAppointment.date), smsAppointment.serial_number || '')}
+                  {calculateAppointmentExpectedTime(getAptBranch(smsAppointment), smsAppointment.date, smsAppointment.serial_number || '')}
                 </p>
               </div>
             </div>

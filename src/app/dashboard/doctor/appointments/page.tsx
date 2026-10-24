@@ -9,7 +9,7 @@ import VitalsModal from '@/components/prescribe/VitalsModal';
 import type { VitalsData } from '@/components/prescribe/VitalsModal';
 import { useSearchParams } from 'next/navigation';
 import { supabase, supabase1, generateSerialNumber, withFeeTypePrefix, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
-import { getBranchId, getAptFee, getAptBranch, getSessionStart } from '@/lib/branch';
+import { getBranchId, getAptFee, getAptBranch } from '@/lib/branch';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { generateAppointmentPDF, generateAbsentPDF } from '@/lib/excel-export';
 import { Card } from '@/components/ui/Card';
@@ -21,7 +21,7 @@ import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import DatePicker from '@/components/ui/DatePicker';
 import toast from 'react-hot-toast';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS, calculateExpectedTime, compareBySerialNumber } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateAppointmentExpectedTime, compareBySerialNumber } from '@/lib/sms';
 import { motion } from 'framer-motion';
 
 const statusConfig = {
@@ -368,10 +368,12 @@ const statusOrder: Record<string, number> = {
     });
     const times: Record<string, string> = {};
     Object.values(groups).forEach((group: any[]) => {
-      const first = [...group].sort(compareBySerialNumber)[0];
-      const base = getSessionStart(first ? getAptBranch(first) : undefined, first?.date);
       group.forEach((apt) => {
-        times[apt.id] = calculateExpectedTime(base, apt.serial_number || '1');
+        times[apt.id] = calculateAppointmentExpectedTime(
+          getAptBranch(apt),
+          apt.date,
+          apt.serial_number || '1'
+        );
       });
     });
     return times;
@@ -523,8 +525,8 @@ const statusOrder: Record<string, number> = {
           if (patientPhone) {
             const smsText = buildConfirmationSMS(
               apt.doctors?.name || '',
+              getAptBranch(apt),
               apt.date,
-              getSessionStart(getAptBranch(apt), apt.date),
               updateData.serial_number || apt.serial_number || ''
             );
             await sendSMS(patientPhone, smsText);
@@ -632,7 +634,7 @@ const statusOrder: Record<string, number> = {
       if (newStatus === 'confirmed') {
         try { await sendNotification('appointment_confirmed_patient', { patientId: apt.patient_id }, { patientName: apt.patients?.name, doctorName: apt.doctors?.name, date: apt.date }); } catch(e) {}
         try { await sendNotification('appointment_confirmed_doctor', { doctorId: apt.doctor_id }, { patientName: apt.patients?.name, date: apt.date }); } catch(e) {}
-        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', apt.date, getSessionStart(getAptBranch(apt), apt.date), apt.serial_number||'')); } } catch(e) {}
+        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', getAptBranch(apt), apt.date, apt.serial_number||'')); } } catch(e) {}
       }
       toast.success(newStatus === 'confirmed' ? 'নিশ্চিত হয়েছে' : 'অপেক্ষায় সেট করা হয়েছে');
       loadAppointments();
@@ -771,8 +773,8 @@ const statusOrder: Record<string, number> = {
     setSmsAppointment(apt);
     setSmsMessage(buildConfirmationSMS(
       apt.doctors?.name || apt.doctorName || '',
+      getAptBranch(apt),
       apt.date,
-      getSessionStart(getAptBranch(apt), apt.date),
       apt.serial_number || ''
     ));
     setShowSMSModal(true);
@@ -1736,7 +1738,7 @@ const statusOrder: Record<string, number> = {
               <div>
                 <p className="text-xs text-slate-500">প্রত্যাশিত সময়</p>
                 <p className="font-semibold text-primary-700">
-                  {calculateExpectedTime(getSessionStart(getAptBranch(smsAppointment), smsAppointment.date), smsAppointment.serial_number || '')}
+                  {calculateAppointmentExpectedTime(getAptBranch(smsAppointment), smsAppointment.date, smsAppointment.serial_number || '')}
                 </p>
               </div>
             </div>

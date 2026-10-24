@@ -1,4 +1,5 @@
 import toast from 'react-hot-toast';
+import { getSessionSlots, type BranchId } from './branch';
 
 function maskPhone(phone: string): string {
   if (!phone || phone.length < 4) return '***';
@@ -80,17 +81,9 @@ export function compareBySerialNumber(
   return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
 }
 
-export function calculateExpectedTime(appointmentTime: string, serialNumber: string): string {
-  const baseTime = (appointmentTime || '09:00').split(' - ')[0];
-  const [rawH, rawM] = baseTime.split(':').map(Number);
-  const baseH = rawH || 9;
-  const baseM = rawM || 0;
-
-  let position = 0;
-  const seq = parseInt(extractSerialNumber(serialNumber), 10);
-  if (!isNaN(seq)) position = Math.max(0, seq - 1);
-
-  const totalMin = baseH * 60 + baseM + position * 5;
+function formatExpectedTime(start: string, position: number): string {
+  const [rawH, rawM] = (start || '09:00').split(':').map(Number);
+  const totalMin = (rawH || 9) * 60 + (rawM || 0) + Math.max(0, position) * 5;
   const h = Math.floor(totalMin / 60) % 24;
   const m = totalMin % 60;
   const period = h >= 12 ? 'PM' : 'AM';
@@ -98,14 +91,53 @@ export function calculateExpectedTime(appointmentTime: string, serialNumber: str
   return `${String(disp).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+/**
+ * Expected (queue) time for an appointment, honouring days that run more than
+ * one session. The session serving the serial is chosen from the serial number,
+ * so a multi-session day resets the clock at each session start. On Shyamoli's
+ * two-session days, serials 1-20 start at 10:00 and 21+ start at 17:00.
+ */
+export function calculateAppointmentExpectedTime(
+  branch: BranchId | string | undefined,
+  date: string,
+  serialNumber: string
+): string {
+  const slots = getSessionSlots(branch, date);
+  const seq = parseInt(extractSerialNumber(serialNumber), 10);
+  const position = isNaN(seq) ? 0 : Math.max(0, seq - 1);
+
+  let consumed = 0;
+  let start = slots[slots.length - 1]?.start || '17:00';
+  let offset = position;
+  let served = false;
+
+  for (const slot of slots) {
+    if (slot.capacity === undefined || position < consumed + slot.capacity) {
+      start = slot.start;
+      offset = position - consumed;
+      served = true;
+      break;
+    }
+    consumed += slot.capacity;
+  }
+
+  // Serial ran past every capped session: keep counting from the last session.
+  if (!served) {
+    start = slots[slots.length - 1]?.start || '17:00';
+    offset = position - consumed;
+  }
+
+  return formatExpectedTime(start, offset);
+}
+
 export function buildConfirmationSMS(
   doctorName: string,
+  branch: BranchId | string | undefined,
   date: string,
-  time: string,
   serialNumber: string
 ): string {
   const formattedDate = formatDateEnglish(date);
-  const expectedTime = calculateExpectedTime(time, serialNumber);
+  const expectedTime = calculateAppointmentExpectedTime(branch, date, serialNumber);
   const serial = extractSerialNumber(serialNumber);
 
   return `Your appointment has been confirmed.

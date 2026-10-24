@@ -5,7 +5,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { Calendar, Clock, Video, X, ChevronRight, FileText, Search, Printer, Receipt } from 'lucide-react';
 import Link from 'next/link';
 import { supabase, FEE_TYPES, getFeeTypes, getFeeAmount, numberToWords } from '@/lib/supabase';
-import { getAptFee, getAptBranch, getSessionStart } from '@/lib/branch';
+import { getAptFee, getAptBranch } from '@/lib/branch';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
@@ -14,7 +14,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import DatePicker from '@/components/ui/DatePicker';
 import { useSearchParams } from 'next/navigation';
-import { calculateExpectedTime } from '@/lib/sms';
+import { calculateAppointmentExpectedTime } from '@/lib/sms';
 
 export default function PatientAppointments() {
   const searchParams = useSearchParams();
@@ -464,7 +464,7 @@ const statusOrder: Record<string, number> = {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-slate-400" />
-                    {apt.serial_number ? calculateExpectedTime(getSessionStart(getAptBranch(apt), apt.date), apt.serial_number) : apt.time_range}
+                    {apt.serial_number ? calculateAppointmentExpectedTime(getAptBranch(apt), apt.date, apt.serial_number) : apt.time_range}
                   </span>
                   <span className={`flex items-center gap-1.5 ${apt.type === 'teleconsult' ? 'text-purple-600' : ''}`}>
                     <span className="text-slate-500">ধরন:</span>
@@ -553,7 +553,7 @@ const statusOrder: Record<string, number> = {
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl">
                   <p className="text-sm text-slate-500 mb-1">প্রত্যাশিত সময়</p>
-                  <p className="font-semibold">{selectedApt.serial_number ? calculateExpectedTime(getSessionStart(getAptBranch(selectedApt), selectedApt.date), selectedApt.serial_number) : selectedApt.time_range}</p>
+                  <p className="font-semibold">{selectedApt.serial_number ? calculateAppointmentExpectedTime(getAptBranch(selectedApt), selectedApt.date, selectedApt.serial_number) : selectedApt.time_range}</p>
                 </div>
               </div>
               {(selectedApt.status === 'confirmed' || selectedApt.status === 'completed') ? (
