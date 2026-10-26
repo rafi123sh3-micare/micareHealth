@@ -1,5 +1,5 @@
 import toast from 'react-hot-toast';
-import { getSessionSlots, type BranchId } from './branch';
+import { getSessionSlots, getSessionIndexForShift, type BranchId } from './branch';
 
 function maskPhone(phone: string): string {
   if (!phone || phone.length < 4) return '***';
@@ -95,16 +95,29 @@ function formatExpectedTime(start: string, position: number): string {
  * Expected (queue) time for an appointment, honouring days that run more than
  * one session. The session serving the serial is chosen from the serial number,
  * so a multi-session day resets the clock at each session start. On Shyamoli's
- * two-session days, serials 1-20 start at 10:00 and 21+ start at 17:00.
+ * two-session days, serials 1-20 start at 10:00 and 21+ start at 17:00. An
+ * explicit shift can force morning/evening for Shyamoli.
  */
 export function calculateAppointmentExpectedTime(
   branch: BranchId | string | undefined,
   date: string,
-  serialNumber: string
+  serialNumber: string,
+  shift?: string | null
 ): string {
   const slots = getSessionSlots(branch, date);
   const seq = parseInt(extractSerialNumber(serialNumber), 10);
   const position = isNaN(seq) ? 0 : Math.max(0, seq - 1);
+
+  const forcedIdx = getSessionIndexForShift(branch, date, shift);
+  if (forcedIdx !== null && slots[forcedIdx]) {
+    let consumed = 0;
+    for (let i = 0; i < forcedIdx; i++) {
+      consumed += slots[i].capacity || 0;
+    }
+    if (position >= consumed) {
+      return formatExpectedTime(slots[forcedIdx].start, position - consumed);
+    }
+  }
 
   let consumed = 0;
   let start = slots[slots.length - 1]?.start || '17:00';
@@ -134,10 +147,11 @@ export function buildConfirmationSMS(
   doctorName: string,
   branch: BranchId | string | undefined,
   date: string,
-  serialNumber: string
+  serialNumber: string,
+  shift?: string | null
 ): string {
   const formattedDate = formatDateEnglish(date);
-  const expectedTime = calculateAppointmentExpectedTime(branch, date, serialNumber);
+  const expectedTime = calculateAppointmentExpectedTime(branch, date, serialNumber, shift);
   const serial = extractSerialNumber(serialNumber);
 
   return `Your appointment has been confirmed.

@@ -162,6 +162,18 @@ export function getSessionStart(branch: BranchId | string | undefined, date: str
   return getSessionSlots(branch, date)[0]?.start || '17:00';
 }
 
+/** Map a UI shift choice to the session index for a branch/day. */
+export function getSessionIndexForShift(
+  branch: BranchId | string | undefined,
+  _date: string,
+  shift?: string | null
+): number | null {
+  if (branch !== 'shyamoli') return null;
+  if (shift === 'morning' || shift === '10am' || shift === 'am') return 0;
+  if (shift === 'evening' || shift === '5pm' || shift === 'pm' || shift === 'night') return 1;
+  return null;
+}
+
 /**
  * Branch an appointment was billed under. Falls back to the signed-in user's
  * branch for rows created before the branch column existed.

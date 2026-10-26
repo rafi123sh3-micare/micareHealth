@@ -372,7 +372,8 @@ const statusOrder: Record<string, number> = {
         times[apt.id] = calculateAppointmentExpectedTime(
           getAptBranch(apt),
           apt.date,
-          apt.serial_number || '1'
+          apt.serial_number || '1',
+          apt.shift
         );
       });
     });
@@ -527,7 +528,8 @@ const statusOrder: Record<string, number> = {
               apt.doctors?.name || '',
               getAptBranch(apt),
               apt.date,
-              updateData.serial_number || apt.serial_number || ''
+              updateData.serial_number || apt.serial_number || '',
+              apt.shift
             );
             await sendSMS(patientPhone, smsText);
           }
@@ -634,7 +636,7 @@ const statusOrder: Record<string, number> = {
       if (newStatus === 'confirmed') {
         try { await sendNotification('appointment_confirmed_patient', { patientId: apt.patient_id }, { patientName: apt.patients?.name, doctorName: apt.doctors?.name, date: apt.date }); } catch(e) {}
         try { await sendNotification('appointment_confirmed_doctor', { doctorId: apt.doctor_id }, { patientName: apt.patients?.name, date: apt.date }); } catch(e) {}
-        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', getAptBranch(apt), apt.date, apt.serial_number||'')); } } catch(e) {}
+        try { const p = apt.patients?.phone; if(p) { await sendSMS(p, buildConfirmationSMS(apt.doctors?.name||'', getAptBranch(apt), apt.date, apt.serial_number||'', apt.shift)); } } catch(e) {}
       }
       toast.success(newStatus === 'confirmed' ? 'নিশ্চিত হয়েছে' : 'অপেক্ষায় সেট করা হয়েছে');
       loadAppointments();
@@ -775,7 +777,8 @@ const statusOrder: Record<string, number> = {
       apt.doctors?.name || apt.doctorName || '',
       getAptBranch(apt),
       apt.date,
-      apt.serial_number || ''
+      apt.serial_number || '',
+      apt.shift
     ));
     setShowSMSModal(true);
   };
@@ -1738,7 +1741,7 @@ const statusOrder: Record<string, number> = {
               <div>
                 <p className="text-xs text-slate-500">প্রত্যাশিত সময়</p>
                 <p className="font-semibold text-primary-700">
-                  {calculateAppointmentExpectedTime(getAptBranch(smsAppointment), smsAppointment.date, smsAppointment.serial_number || '')}
+                  {calculateAppointmentExpectedTime(getAptBranch(smsAppointment), smsAppointment.date, smsAppointment.serial_number || '', smsAppointment.shift)}
                 </p>
               </div>
             </div>

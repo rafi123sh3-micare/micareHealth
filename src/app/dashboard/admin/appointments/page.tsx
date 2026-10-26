@@ -171,6 +171,7 @@ export default function AdminAppointments() {
     bcode: '',
     fee_type: 'new' as string,
     advance: 0 as number,
+    shift: '' as '' | 'morning' | 'evening',
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
 
@@ -605,7 +606,8 @@ export default function AdminAppointments() {
         times[apt.id] = calculateAppointmentExpectedTime(
           getAptBranch(apt),
           apt.date,
-          apt.serial_number || '1'
+          apt.serial_number || '1',
+          apt.shift
         );
       });
     });
@@ -771,7 +773,8 @@ export default function AdminAppointments() {
               apt.doctors?.name || '',
               getAptBranch(apt),
               apt.date,
-              updateData.serial_number || apt.serial_number || ''
+              updateData.serial_number || apt.serial_number || '',
+              apt.shift
             );
             await sendSMS(patientPhone, smsText);
           }
@@ -1021,7 +1024,8 @@ try {
             walkinDoctor?.name || '',
             getBranchId(),
             walkinPatient.date,
-            serialNumber || ''
+            serialNumber || '',
+            walkinPatient.shift
           );
           await sendSMS(walkinPatient.phone, smsText);
         } catch (e) {
@@ -1029,7 +1033,7 @@ try {
         }
       }
       setShowWalkinModal(false);
-      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0 });
+      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0, shift: '' });
       loadData();
     } catch (err) {
       toast.error('কিছু সমস্যা হয়েছে');
@@ -1187,7 +1191,8 @@ try {
       apt.doctors?.name || apt.doctorName || '',
       getAptBranch(apt),
       apt.date,
-      apt.serial_number || ''
+      apt.serial_number || '',
+      apt.shift
     ));
     setShowSMSModal(true);
   };
@@ -2043,9 +2048,40 @@ try {
             </select>
           </div>
 
-          {/* ওয়াক-ইন অ্যাপয়েন্টমেন্ট সবসময় সরাসরি (in-person) */}
-          <div>
-            <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
+              {/* ওয়াক-ইন অ্যাপয়েন্টমেন্ট সবসময় সরাসরি (in-person) */}
+              {getBranchId() === 'shyamoli' && (
+                <div>
+                  <label className="text-sm font-medium text-slate-600 mb-2 block">শিফট নির্বাচন *</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWalkinPatient({ ...walkinPatient, shift: 'morning' })}
+                      className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                        walkinPatient.shift === 'morning'
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="font-semibold">সকাল ১০ টা</div>
+                      <div className="text-xs mt-0.5 opacity-75">সিরিয়াল ১ - ২০</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWalkinPatient({ ...walkinPatient, shift: 'evening' })}
+                      className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                        walkinPatient.shift === 'evening'
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="font-semibold">সন্ধ্যা ৫ টা</div>
+                      <div className="text-xs mt-0.5 opacity-75">২১+</div>
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
             <div className="grid grid-cols-3 gap-2">
               {getFeeTypes().map((ft) => (
                 <button
@@ -2618,7 +2654,7 @@ try {
               <div>
                 <p className="text-xs text-slate-500">প্রত্যাশিত সময়</p>
                 <p className="font-semibold text-primary-700">
-                  {calculateAppointmentExpectedTime(getAptBranch(smsAppointment), smsAppointment.date, smsAppointment.serial_number || '')}
+                  {calculateAppointmentExpectedTime(getAptBranch(smsAppointment), smsAppointment.date, smsAppointment.serial_number || '', smsAppointment.shift)}
                 </p>
               </div>
             </div>
