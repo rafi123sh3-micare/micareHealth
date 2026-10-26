@@ -20,6 +20,13 @@ const fallbackDoctors = [
 
 const stepLabels = ['ডাক্তার', 'ধরন', 'তারিখ ও সময়', 'নিশ্চিত'];
 
+/** Shyamoli runs two chambers a day: the pre-noon slot is the morning shift. */
+function shiftForSlot(start: string): 'morning' | 'evening' | null {
+  const hour = parseInt((start || '').split(':')[0], 10);
+  if (isNaN(hour)) return null;
+  return hour < 12 ? 'morning' : 'evening';
+}
+
 export default function PatientBook() {
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -197,6 +204,7 @@ export default function PatientBook() {
         fee_type: feeType,
         teleconsult_link: consultType === 'teleconsult' ? selectedDoctor?.zoom_link || null : null,
         branch: getBranchId(),
+        shift: getBranchId() === 'shyamoli' ? shiftForSlot(selectedSlot.start) : null,
       };
 
       const { data: appointment, error } = await supabase

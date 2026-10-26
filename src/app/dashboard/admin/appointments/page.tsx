@@ -730,7 +730,9 @@ export default function AdminAppointments() {
         apt.date,
         apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
         apt.fee_type,
-        apt.patients?.phone
+        apt.patients?.phone,
+        undefined,
+        apt.shift
       );
       updateData.serial_number = serialNumber;
     }
@@ -928,6 +930,10 @@ export default function AdminAppointments() {
       toast.error('রোগীর নাম ও ডাক্তার নির্বাচন করুন');
       return;
     }
+    if (getBranchId() === 'shyamoli' && !walkinPatient.shift) {
+      toast.error('শিফট নির্বাচন করুন (সকাল ১০ টা / সন্ধ্যা ৫ টা)');
+      return;
+    }
 
     setCreatingWalkin(true);
 
@@ -948,7 +954,7 @@ try {
           sex: walkinPatient.sex || 'male',
           compliant: walkinPatient.compliant || 'false',
         }).select('id').single(),
-        generateSerialNumber(walkinPatient.doctor_id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone)
+        generateSerialNumber(walkinPatient.doctor_id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, walkinPatient.shift)
       ]);
 
       const newPatient = patientResult.data;
@@ -973,6 +979,7 @@ try {
         paid: walkinPatient.advance,
         booked_by: receptionistName,
         branch: getBranchId(),
+        shift: walkinPatient.shift || null,
       });
 
       if (aptError) {

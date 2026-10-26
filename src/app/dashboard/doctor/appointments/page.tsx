@@ -488,7 +488,9 @@ const statusOrder: Record<string, number> = {
         apt.date,
         apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
         apt.fee_type,
-        apt.patients?.phone
+        apt.patients?.phone,
+        undefined,
+        apt.shift
       );
       updateData.serial_number = serialNumber;
     }
@@ -619,7 +621,9 @@ const statusOrder: Record<string, number> = {
         apt.date,
         apt.type === 'teleconsult' ? 'teleconsult' : 'appointment',
         apt.fee_type,
-        apt.patients?.phone
+        apt.patients?.phone,
+        undefined,
+        apt.shift
       );
       updateData.serial_number = serialNumber;
     }

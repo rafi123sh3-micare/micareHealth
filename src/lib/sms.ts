@@ -94,9 +94,10 @@ function formatExpectedTime(start: string, position: number): string {
 /**
  * Expected (queue) time for an appointment, honouring days that run more than
  * one session. The session serving the serial is chosen from the serial number,
- * so a multi-session day resets the clock at each session start. On Shyamoli's
- * two-session days, serials 1-20 start at 10:00 and 21+ start at 17:00. An
- * explicit shift can force morning/evening for Shyamoli.
+ * so a multi-session day resets the clock at each session start. An explicit
+ * shift (chosen when booking) pins the appointment to that session and counts
+ * from its start using the shift's own serial, so a chosen 10 AM never rolls
+ * into the 5 PM session.
  */
 export function calculateAppointmentExpectedTime(
   branch: BranchId | string | undefined,
@@ -110,13 +111,9 @@ export function calculateAppointmentExpectedTime(
 
   const forcedIdx = getSessionIndexForShift(branch, date, shift);
   if (forcedIdx !== null && slots[forcedIdx]) {
-    let consumed = 0;
-    for (let i = 0; i < forcedIdx; i++) {
-      consumed += slots[i].capacity || 0;
-    }
-    if (position >= consumed) {
-      return formatExpectedTime(slots[forcedIdx].start, position - consumed);
-    }
+    // Serials are numbered per shift, so the position is counted from this
+    // session's own start — no overflow into the other shift.
+    return formatExpectedTime(slots[forcedIdx].start, position);
   }
 
   let consumed = 0;
