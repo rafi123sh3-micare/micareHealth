@@ -30,12 +30,8 @@ function getLast4PhoneDigits(phone?: string): string {
 }
 
 export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string, excludeAppointmentId?: string, shift?: string | null): Promise<string> {
-  const hasShift = shift === 'morning' || shift === 'evening';
-
-  // The database returns the next position in the queue. When a Shyamoli shift
-  // is chosen, only that shift's queue is counted, so 10 AM and 5 PM each start
-  // their own numbering instead of sharing one daily counter. A database trigger
-  // re-sequences the active list per shift after queue changes.
+  // Serial counts one daily queue per doctor/date, regardless of shift.
+  // The shift parameter is kept for API compatibility but does not affect serial numbering.
   const { data: reservedSerial, error: reservationError } = await supabase.rpc(
     'reserve_appointment_serial',
     {
@@ -44,7 +40,6 @@ export async function generateSerialNumber(doctorId: string, date: string, type:
       p_type: type,
       p_fee_type: feeType || '',
       p_phone: phone || '',
-      p_shift: hasShift ? shift : '',
     }
   );
 
@@ -61,9 +56,6 @@ export async function generateSerialNumber(doctorId: string, date: string, type:
     .eq('doctor_id', doctorId)
     .eq('date', date)
     .in('status', ['confirmed', 'completed']);
-  if (hasShift) {
-    serialQuery = serialQuery.eq('shift', shift);
-  }
   if (excludeAppointmentId) {
     serialQuery = serialQuery.neq('id', excludeAppointmentId);
   }
