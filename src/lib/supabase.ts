@@ -29,33 +29,45 @@ function getLast4PhoneDigits(phone?: string): string {
   return cleaned.slice(-4);
 }
 
-export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string, excludeAppointmentId?: string, shift?: string | null): Promise<string> {
-  // Serial counts one daily queue per doctor/date, regardless of shift.
-  // The shift parameter is kept for API compatibility but does not affect serial numbering.
-  const { data: reservedSerial, error: reservationError } = await supabase.rpc(
-    'reserve_appointment_serial',
-    {
-      p_doctor_id: doctorId,
-      p_date: date,
-      p_type: type,
-      p_fee_type: feeType || '',
-      p_phone: phone || '',
-    }
-  );
+/** Insert or replace the Shyamoli shift letter: DR01-001ANM1234 / DR01-001ANE1234. */
+function applyShiftMarker(serial: string, shift?: string | null): string {
+  if (!serial) return serial;
+  if (shift !== 'morning' && shift !== 'evening') return serial;
+  const marker = shift === 'evening' ? 'E' : 'M';
+  const withType = serial.match(/^(.+-\d+[AT][NFR]?)([ME]?)(\d*)$/);
+  if (withType) return `${withType[1]}${marker}${withType[3]}`;
+  return serial.replace(/-[ME]$/, `-${marker}`);
+}
 
-  if (!reservationError && reservedSerial) {
-    return reservedSerial;
+export async function generateSerialNumber(doctorId: string, date: string, type: 'appointment' | 'teleconsult', feeType?: string, phone?: string, excludeAppointmentId?: string, shift?: string | null): Promise<string> {
+  // Shyamoli: morning → ANM…, evening → ANE…, each queue starts at 001.
+  const rpcArgs: Record<string, string> = {
+    p_doctor_id: doctorId,
+    p_date: date,
+    p_type: type,
+    p_fee_type: feeType || '',
+    p_phone: phone || '',
+  };
+  if (shift) rpcArgs.p_shift = shift;
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('reserve_appointment_serial', rpcArgs);
+  let reservedSerial = rpcData as string | null;
+  if (!rpcError && reservedSerial) {
+    return applyShiftMarker(reservedSerial, shift);
   }
 
   // Compatibility fallback for installations where the SQL migration has not
   // been applied yet.
-  console.warn('Serial reservation RPC is unavailable; using compatibility fallback.', reservationError);
+  console.warn('Serial reservation RPC is unavailable; using compatibility fallback.', rpcError);
   let serialQuery = supabase
     .from('appointments')
     .select('id, serial_number')
     .eq('doctor_id', doctorId)
     .eq('date', date)
     .in('status', ['confirmed', 'completed']);
+  if (shift) {
+    serialQuery = serialQuery.eq('shift', shift);
+  }
   if (excludeAppointmentId) {
     serialQuery = serialQuery.neq('id', excludeAppointmentId);
   }
@@ -67,10 +79,11 @@ export async function generateSerialNumber(doctorId: string, date: string, type:
   const doctorCode = doctorResult.data?.doctor_code || 'DR01';
   const typeSuffix = type === 'teleconsult' ? 'T' : 'A';
   const feePrefix = FEE_TYPE_PREFIX[feeType || ''] || '';
+  const shiftSuffix = shift === 'evening' ? 'E' : shift === 'morning' ? 'M' : '';
   const currentQueueSize = serialResult.data?.length || 0;
   const phoneSuffix = getLast4PhoneDigits(phone);
 
-  return `${doctorCode}-${String(currentQueueSize + 1).padStart(3, '0')}${typeSuffix}${feePrefix}${phoneSuffix}`;
+  return `${doctorCode}-${String(currentQueueSize + 1).padStart(3, '0')}${typeSuffix}${feePrefix}${shiftSuffix}${phoneSuffix}`;
 }
 
 export const FEE_TYPES = [
@@ -100,7 +113,7 @@ export function getFeeTypePrefix(feeType?: string): string {
  * leaving the doctor code, queue position, A/T marker and phone suffix intact.
  *
  *   DR01-001AN7151 + follow_up  ->  DR01-001AF7151
- *   DR01-001AN7151 + report     ->  DR01-001AR7151
+ *   DR01-001ANM7151 + follow_up ->  DR01-001AFM7151
  *
  * The NNN group is a live queue position maintained by the resequencing
  * trigger, so it must never be rewritten here. Serials that do not match the
@@ -108,10 +121,10 @@ export function getFeeTypePrefix(feeType?: string): string {
  */
 export function withFeeTypePrefix(serialNumber: string | null | undefined, feeType?: string): string {
   if (!serialNumber) return '';
-  const match = serialNumber.match(/^(.+-\d+)([AT])([NFR]?)(\d*)$/);
+  const match = serialNumber.match(/^(.+-\d+)([AT])([NFR]?)([ME]?)(\d*)$/);
   if (!match) return serialNumber;
-  const [, head, typeMarker, , phoneSuffix] = match;
-  return `${head}${typeMarker}${getFeeTypePrefix(feeType)}${phoneSuffix}`;
+  const [, head, typeMarker, , shiftMarker, phoneSuffix] = match;
+  return `${head}${typeMarker}${getFeeTypePrefix(feeType)}${shiftMarker}${phoneSuffix}`;
 }
 
 export function numberToWords(n: number): string {

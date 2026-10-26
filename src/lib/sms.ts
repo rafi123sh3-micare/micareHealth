@@ -99,6 +99,18 @@ function formatExpectedTime(start: string, position: number): string {
  * from its start using the shift's own serial, so a chosen 10 AM never rolls
  * into the 5 PM session.
  */
+function extractShiftFromSerial(serialNumber: string): 'morning' | 'evening' | null {
+  if (!serialNumber) return null;
+  const match = serialNumber.match(/[AT][NFR]?([ME])\d*$/) || serialNumber.match(/-([ME])$/);
+  if (match) return match[1] === 'M' ? 'morning' : 'evening';
+  return null;
+}
+
+export function getAppointmentShift(apt: { shift?: string | null; serial_number?: string | null }): 'morning' | 'evening' | null {
+  if (apt.shift === 'morning' || apt.shift === 'evening') return apt.shift;
+  return extractShiftFromSerial(apt.serial_number || '');
+}
+
 export function calculateAppointmentExpectedTime(
   branch: BranchId | string | undefined,
   date: string,
@@ -109,13 +121,17 @@ export function calculateAppointmentExpectedTime(
   const seq = parseInt(extractSerialNumber(serialNumber), 10);
   const position = isNaN(seq) ? 0 : Math.max(0, seq - 1);
 
-  const forcedIdx = getSessionIndexForShift(branch, date, shift);
+  // Determine shift from the serial number suffix (M or E), or fall back to the explicit shift param.
+  const serialShift = extractShiftFromSerial(serialNumber);
+  const effectiveShift = (shift || serialShift || 'morning') as 'morning' | 'evening' | null;
+
+  const forcedIdx = getSessionIndexForShift(branch, date, effectiveShift);
   if (forcedIdx !== null && slots[forcedIdx]) {
-    // Serials are numbered per shift, so the position is counted from this
-    // session's own start — no overflow into the other shift.
+    // Serials are numbered per shift (M or E suffix), so position counts from this session's start.
     return formatExpectedTime(slots[forcedIdx].start, position);
   }
 
+  // Fallback: count from the last session if shift couldn't be determined.
   let consumed = 0;
   let start = slots[slots.length - 1]?.start || '17:00';
   let offset = position;

@@ -21,7 +21,7 @@ import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import DatePicker from '@/components/ui/DatePicker';
 import toast from 'react-hot-toast';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS, calculateAppointmentExpectedTime, compareBySerialNumber } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateAppointmentExpectedTime, compareBySerialNumber, getAppointmentShift } from '@/lib/sms';
 import { motion } from 'framer-motion';
 
 const statusConfig = {
@@ -125,6 +125,7 @@ export default function DoctorAppointments() {
   const [filterDate, setFilterDate] = useState(getLocalDateString());
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterShift, setFilterShift] = useState<'' | 'morning' | 'evening'>('');
   const [search, setSearch] = useState('');
   const [highlightedSerial, setHighlightedSerial] = useState<string | null>(null);
 
@@ -152,6 +153,7 @@ export default function DoctorAppointments() {
     bcode: '',
     fee_type: 'new' as string,
     advance: 0 as number,
+    shift: '' as '' | 'morning' | 'evening',
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -382,11 +384,20 @@ const statusOrder: Record<string, number> = {
 
   const expectedTimes = getExpectedTimes(appointments);
 
+  const shiftCountBase = appointments.filter(apt => {
+    if (filterDate && String(apt.date).slice(0, 10) !== filterDate) return false;
+    if (apt.status === 'cancelled') return false;
+    return true;
+  });
+  const morningShiftCount = shiftCountBase.filter(a => getAppointmentShift(a) === 'morning').length;
+  const eveningShiftCount = shiftCountBase.filter(a => getAppointmentShift(a) === 'evening').length;
+
   const filteredAppointments = appointments
     .filter(apt => {
     if (filterDate && apt.date !== filterDate) return false;
     if (filterStatus && apt.displayStatus !== filterStatus) return false;
     if (filterType && apt.type !== filterType) return false;
+    if (filterShift && getAppointmentShift(apt) !== filterShift) return false;
     if (search) {
       const searchLower = search.toLowerCase();
       const statusLabel = ({ pending: 'অপেক্ষায়', confirmed: 'নিশ্চিত', upcoming: 'আসন্ন', completed: 'সম্পন্ন', cancelled: 'বাতিল' } as Record<string, string>)[apt.displayStatus || apt.status] || '';
@@ -690,6 +701,10 @@ const statusOrder: Record<string, number> = {
   const handleAddWalkin = async () => {
     const doctorData = JSON.parse(localStorage.getItem('doctorData') || 'null');
     if (!walkinPatient.name) { toast.error('রোগীর নাম লিখুন'); return; }
+    if (getBranchId() === 'shyamoli' && !walkinPatient.shift) {
+      toast.error('শিফট নির্বাচন করুন (সকাল ১০ টা / সন্ধ্যা ৫ টা)');
+      return;
+    }
     setCreatingWalkin(true);
     try {
       // Time is auto-derived from the doctor's schedule start for the selected date
@@ -714,7 +729,7 @@ const statusOrder: Record<string, number> = {
           password: 'walkin_temp', age: walkinPatient.age, sex: walkinPatient.sex || 'male',
           compliant: walkinPatient.compliant || 'false',
         }).select('id').single(),
-        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone)
+        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, walkinPatient.shift)
       ]);
 
       const newPatient = patientResult.data;
@@ -729,6 +744,7 @@ const statusOrder: Record<string, number> = {
         paid: walkinPatient.advance,
         booked_by: receptionistName,
         branch: getBranchId(),
+        shift: walkinPatient.shift || null,
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
 
@@ -759,7 +775,7 @@ const statusOrder: Record<string, number> = {
       });
       setShowQRModal(true);
       setShowWalkinModal(false);
-      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0 });
+      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0, shift: '' });
       loadAppointments();
     } catch (err) { toast.error('কিছু সমস্যা হয়েছে'); }
     finally { setCreatingWalkin(false); }
@@ -1249,6 +1265,52 @@ const statusOrder: Record<string, number> = {
                 {Object.values(statusConfig).map(s => (<option key={s.value} value={s.value}>{s.label}</option>))}
               </select>
             </div>
+            {getBranchId() === 'shyamoli' && (
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-2 block">শিফট</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFilterShift('')}
+                    className={`py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      filterShift === ''
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    সব
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterShift(filterShift === 'morning' ? '' : 'morning')}
+                    className={`py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      filterShift === 'morning'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    সকাল ১০ টা
+                    <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-700">
+                      {morningShiftCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterShift(filterShift === 'evening' ? '' : 'evening')}
+                    className={`py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      filterShift === 'evening'
+                        ? 'border-amber-500 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    সন্ধ্যা ৫ টা
+                    <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-700">
+                      {eveningShiftCount}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="flex-1 min-w-[150px] sm:min-w-[200px]">
               <label className="text-sm font-medium text-slate-600 mb-2 block">খুঁজুন</label>
               <div className="relative">
@@ -1473,6 +1535,35 @@ const statusOrder: Record<string, number> = {
               <button type="button" onClick={() => setWalkinPatient({...walkinPatient, type: 'teleconsult'})} className={`flex-1 py-2 px-4 rounded-lg border-2 transition-all ${walkinPatient.type === 'teleconsult' ? 'border-purple-500 bg-purple-50 text-purple-700' : 'border-slate-200 hover:border-slate-300'}`}>ভিডিও কল</button>
             </div>
           </div>
+          {getBranchId() === 'shyamoli' && (
+            <div>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">শিফট নির্বাচন *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWalkinPatient({ ...walkinPatient, shift: 'morning' })}
+                  className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                    walkinPatient.shift === 'morning'
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="font-semibold">সকাল ১০ টা</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWalkinPatient({ ...walkinPatient, shift: 'evening' })}
+                  className={`py-3 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                    walkinPatient.shift === 'evening'
+                      ? 'border-primary-500 bg-primary-50 text-primary-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="font-semibold">সন্ধ্যা ৫ টা</div>
+                </button>
+              </div>
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
             <div className="grid grid-cols-3 gap-2">

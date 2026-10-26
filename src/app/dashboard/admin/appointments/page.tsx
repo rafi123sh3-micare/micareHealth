@@ -20,7 +20,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { AppointmentSlip } from '@/components/appointments/AppointmentSlip';
 import { generateCashMemoPrint } from '@/components/appointments/CashMemo';
 import { sendNotification, requestPushPermission } from '@/lib/notifications';
-import { sendSMS, buildConfirmationSMS, calculateAppointmentExpectedTime, compareBySerialNumber } from '@/lib/sms';
+import { sendSMS, buildConfirmationSMS, calculateAppointmentExpectedTime, compareBySerialNumber, getAppointmentShift } from '@/lib/sms';
 import DatePicker from '@/components/ui/DatePicker';
 import { motion } from 'framer-motion';
 import { Modal } from '@/components/ui/Modal';
@@ -151,6 +151,7 @@ export default function AdminAppointments() {
   const [filterDate, setFilterDate] = useState(getLocalDateString());
   const [filterDoctor, setFilterDoctor] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterShift, setFilterShift] = useState<'' | 'morning' | 'evening'>('');
   const [filterUnpaid, setFilterUnpaid] = useState('');
   const [search, setSearch] = useState('');
 
@@ -616,11 +617,21 @@ export default function AdminAppointments() {
 
   const expectedTimes = getExpectedTimes(appointments);
 
+  const shiftCountBase = appointments.filter(apt => {
+    if (filterDate && String(apt.date).slice(0, 10) !== filterDate) return false;
+    if (filterDoctor && apt.doctor_id !== filterDoctor) return false;
+    if (apt.status === 'cancelled') return false;
+    return true;
+  });
+  const morningShiftCount = shiftCountBase.filter(a => getAppointmentShift(a) === 'morning').length;
+  const eveningShiftCount = shiftCountBase.filter(a => getAppointmentShift(a) === 'evening').length;
+
   const filteredAppointments = appointments
     .filter(apt => {
     if (filterDate && String(apt.date).slice(0, 10) !== filterDate) return false;
     if (filterDoctor && apt.doctor_id !== filterDoctor) return false;
     if (filterStatus && apt.status !== filterStatus && apt.displayStatus !== filterStatus) return false;
+    if (filterShift && getAppointmentShift(apt) !== filterShift) return false;
     if (filterUnpaid === 'yes' && (apt.paid || 0) > 0) return false;
     if (filterUnpaid === 'no' && (apt.paid || 0) === 0) return false;
     if (search) {
@@ -1594,6 +1605,53 @@ try {
                 <option value="cancelled">বাতিল</option>
               </select>
             </div>
+
+            {getBranchId() === 'shyamoli' && (
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-2 block">শিফট</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFilterShift('')}
+                    className={`py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      filterShift === ''
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    সব
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterShift(filterShift === 'morning' ? '' : 'morning')}
+                    className={`py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      filterShift === 'morning'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    সকাল ১০ টা
+                    <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-700">
+                      {morningShiftCount}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterShift(filterShift === 'evening' ? '' : 'evening')}
+                    className={`py-2 px-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      filterShift === 'evening'
+                        ? 'border-amber-500 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    সন্ধ্যা ৫ টা
+                    <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-700">
+                      {eveningShiftCount}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="min-w-[140px]">
               <label className="text-sm font-medium text-slate-600 mb-2 block">পরিশোধ</label>
