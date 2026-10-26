@@ -2063,7 +2063,6 @@ try {
                       }`}
                     >
                       <div className="font-semibold">সকাল ১০ টা</div>
-                      <div className="text-xs mt-0.5 opacity-75">সিরিয়াল ১ - ২০</div>
                     </button>
                     <button
                       type="button"
@@ -2075,7 +2074,6 @@ try {
                       }`}
                     >
                       <div className="font-semibold">সন্ধ্যা ৫ টা</div>
-                      <div className="text-xs mt-0.5 opacity-75">২১+</div>
                     </button>
                   </div>
                 </div>
