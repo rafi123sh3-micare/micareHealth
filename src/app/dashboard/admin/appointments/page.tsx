@@ -941,14 +941,15 @@ export default function AdminAppointments() {
       toast.error('রোগীর নাম ও ডাক্তার নির্বাচন করুন');
       return;
     }
-    if (getBranchId() === 'shyamoli' && !walkinPatient.shift) {
+    const branchId = getBranchId();
+    if (branchId === 'shyamoli' && !walkinPatient.shift) {
       toast.error('শিফট নির্বাচন করুন (সকাল ১০ টা / সন্ধ্যা ৫ টা)');
       return;
     }
 
     setCreatingWalkin(true);
 
-try {
+    try {
       // Time is auto-derived from the doctor's schedule start for the selected date
       const scheduleStart = resolveScheduleStart(schedules, walkinPatient.date);
       const appointmentTime = scheduleStart || '09:00';
@@ -965,7 +966,7 @@ try {
           sex: walkinPatient.sex || 'male',
           compliant: walkinPatient.compliant || 'false',
         }).select('id').single(),
-        generateSerialNumber(walkinPatient.doctor_id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, walkinPatient.shift)
+        generateSerialNumber(walkinPatient.doctor_id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, getBranchId() === 'shyamoli' ? walkinPatient.shift : null)
       ]);
 
       const newPatient = patientResult.data;
@@ -975,6 +976,7 @@ try {
         return;
       }
 
+      const branchId = getBranchId();
       const { error: aptError } = await supabase.from('appointments').insert({
         patient_id: newPatient.id,
         doctor_id: walkinPatient.doctor_id,
@@ -989,8 +991,8 @@ try {
         advance: walkinPatient.advance,
         paid: walkinPatient.advance,
         booked_by: receptionistName,
-        branch: getBranchId(),
-        shift: walkinPatient.shift || null,
+        branch: branchId,
+        shift: branchId === 'shyamoli' ? (walkinPatient.shift || null) : null,
       });
 
       if (aptError) {
@@ -1043,7 +1045,7 @@ try {
             getBranchId(),
             walkinPatient.date,
             serialNumber || '',
-            walkinPatient.shift
+            branchId === 'shyamoli' ? walkinPatient.shift : null
           );
           await sendSMS(walkinPatient.phone, smsText);
         } catch (e) {
