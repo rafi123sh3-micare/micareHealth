@@ -1968,10 +1968,15 @@ export default function AdminAppointments() {
                 <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid − Refund)</label>
                 <input
                   type="number"
-                  value={Math.max(0, (editOriginalPaid || 0) - (editRefunded || 0)) || 0}
-                  readOnly
-                  disabled
-                  className="input w-full text-center font-semibold bg-slate-100 cursor-not-allowed"
+                  min={0}
+                  value={editPaid || ''}
+                  placeholder="০"
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setEditPaid(val);
+                    setEditOriginalPaid(val + (editRefunded || 0));
+                  }}
+                  className="input w-full text-center font-semibold"
                 />
               </div>
               <div>
