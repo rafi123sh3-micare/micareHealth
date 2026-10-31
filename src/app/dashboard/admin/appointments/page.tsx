@@ -173,6 +173,7 @@ export default function AdminAppointments() {
     fee_type: 'new' as string,
     advance: 0 as number,
     shift: '' as '' | 'morning' | 'evening',
+    branch: getBranchId() as 'cumilla' | 'shyamoli',
   });
   const [creatingWalkin, setCreatingWalkin] = useState(false);
 
@@ -941,8 +942,8 @@ export default function AdminAppointments() {
       toast.error('রোগীর নাম ও ডাক্তার নির্বাচন করুন');
       return;
     }
-    const branchId = getBranchId();
-    if (branchId === 'shyamoli' && !walkinPatient.shift) {
+    const walkinBranch = walkinPatient.branch || getBranchId();
+    if (walkinBranch === 'shyamoli' && !walkinPatient.shift) {
       toast.error('শিফট নির্বাচন করুন (সকাল ১০ টা / সন্ধ্যা ৫ টা)');
       return;
     }
@@ -966,7 +967,7 @@ export default function AdminAppointments() {
           sex: walkinPatient.sex || 'male',
           compliant: walkinPatient.compliant || 'false',
         }).select('id').single(),
-        generateSerialNumber(walkinPatient.doctor_id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, getBranchId() === 'shyamoli' ? walkinPatient.shift : null)
+        generateSerialNumber(walkinPatient.doctor_id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, walkinBranch === 'shyamoli' ? walkinPatient.shift : null)
       ]);
 
       const newPatient = patientResult.data;
@@ -991,8 +992,8 @@ export default function AdminAppointments() {
         advance: walkinPatient.advance,
         paid: walkinPatient.advance,
         booked_by: receptionistName,
-        branch: branchId,
-        shift: branchId === 'shyamoli' ? (walkinPatient.shift || null) : null,
+        branch: walkinBranch,
+        shift: walkinBranch === 'shyamoli' ? (walkinPatient.shift || null) : null,
       });
 
       if (aptError) {
@@ -1042,10 +1043,10 @@ export default function AdminAppointments() {
         try {
           const smsText = buildConfirmationSMS(
             walkinDoctor?.name || '',
-            getBranchId(),
+            walkinBranch,
             walkinPatient.date,
             serialNumber || '',
-            branchId === 'shyamoli' ? walkinPatient.shift : null
+            walkinBranch === 'shyamoli' ? walkinPatient.shift : null
           );
           await sendSMS(walkinPatient.phone, smsText);
         } catch (e) {
@@ -1053,7 +1054,7 @@ export default function AdminAppointments() {
         }
       }
       setShowWalkinModal(false);
-      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0, shift: '' });
+      setWalkinPatient({ name: '', phone: '', age: 0, sex: 'male', doctor_id: '', type: 'in-person', date: getLocalDateString(), time: '', reason: '', compliant: '', bcode: '', fee_type: 'new', advance: 0, shift: '', branch: getBranchId() });
       loadData();
     } catch (err) {
       toast.error('কিছু সমস্যা হয়েছে');
@@ -1536,7 +1537,7 @@ export default function AdminAppointments() {
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={handleExportPDF}><Download className="w-5 h-5" /> PDF</Button>
             <Button variant="secondary" onClick={handleExportAbsentPDF} title="যারা পরিশোধ করেনি (Paid 0 / Refund 0)"><Download className="w-5 h-5" /> Absent PDF</Button>
-            <Button onClick={() => { setShowWalkinModal(true); setPrevCheckResults([]); setPrevChecked(false); }}>
+            <Button           onClick={() => { setShowWalkinModal(true); setPrevCheckResults([]); setPrevChecked(false); setWalkinPatient(p => ({...p, branch: getBranchId()})); }}>
               <Plus className="w-5 h-5" /> নতুন অ্যাপয়েন্টমেন্ট
             </Button>
           </div>
@@ -2023,6 +2024,33 @@ export default function AdminAppointments() {
       >
         <div className="space-y-5">
           <div>
+            <label className="text-sm font-medium text-slate-600 mb-2 block">শাখা *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setWalkinPatient({ ...walkinPatient, branch: 'shyamoli', shift: '' })}
+                className={`py-2.5 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                  (walkinPatient.branch || getBranchId()) === 'shyamoli'
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="font-semibold">শ্যামলী</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWalkinPatient({ ...walkinPatient, branch: 'cumilla', shift: '' })}
+                className={`py-2.5 px-2 rounded-lg border-2 text-center transition-all text-sm ${
+                  (walkinPatient.branch || getBranchId()) === 'cumilla'
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="font-semibold">কুমিল্লা</div>
+              </button>
+            </div>
+          </div>
+          <div>
             <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর নাম *</label>
             <input
               type="text"
@@ -2116,7 +2144,7 @@ export default function AdminAppointments() {
           </div>
 
               {/* ওয়াক-ইন অ্যাপয়েন্টমেন্ট সবসময় সরাসরি (in-person) */}
-              {getBranchId() === 'shyamoli' && (
+              {(walkinPatient.branch || getBranchId()) === 'shyamoli' && (
                 <div>
                   <label className="text-sm font-medium text-slate-600 mb-2 block">শিফট নির্বাচন *</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -2148,7 +2176,7 @@ export default function AdminAppointments() {
               <div>
                 <label className="text-sm font-medium text-slate-600 mb-2 block">রোগীর ধরন / ফি</label>
             <div className="grid grid-cols-3 gap-2">
-              {getFeeTypes().map((ft) => (
+              {getFeeTypes(walkinPatient.branch || getBranchId()).map((ft) => (
                 <button
                   key={ft.value}
                   type="button"
@@ -2170,18 +2198,18 @@ export default function AdminAppointments() {
             <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">মোট ফি</label>
-                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(walkinPatient.fee_type)}</div>
+                <div className="text-lg font-bold text-slate-900">৳{getFeeAmount(walkinPatient.fee_type, walkinPatient.branch || getBranchId())}</div>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">পরিশোধ (Paid)</label>
                 <input
                   type="number"
                   min={0}
-                  max={getFeeAmount(walkinPatient.fee_type)}
+                  max={getFeeAmount(walkinPatient.fee_type, walkinPatient.branch || getBranchId())}
                   value={walkinPatient.advance || ''}
                   placeholder="০"
                   onChange={(e) => {
-                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(walkinPatient.fee_type));
+                    const val = Math.min(Math.max(parseInt(e.target.value) || 0, 0), getFeeAmount(walkinPatient.fee_type, walkinPatient.branch || getBranchId()));
                     setWalkinPatient({ ...walkinPatient, advance: val });
                   }}
                   className="input w-full text-center font-semibold"
@@ -2189,7 +2217,7 @@ export default function AdminAppointments() {
               </div>
               <div className="col-span-2 flex justify-between text-sm pt-1 border-t border-slate-200">
                 <span className="text-slate-500">বাকি (Due):</span>
-                <span className="font-bold text-primary-600">৳{getFeeAmount(walkinPatient.fee_type) - walkinPatient.advance}</span>
+                <span className="font-bold text-primary-600">৳{getFeeAmount(walkinPatient.fee_type, walkinPatient.branch || getBranchId()) - walkinPatient.advance}</span>
               </div>
             </div>
           )}
