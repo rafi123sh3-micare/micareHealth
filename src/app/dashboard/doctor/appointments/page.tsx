@@ -729,7 +729,7 @@ const statusOrder: Record<string, number> = {
           password: 'walkin_temp', age: walkinPatient.age, sex: walkinPatient.sex || 'male',
           compliant: walkinPatient.compliant || 'false',
         }).select('id').single(),
-        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, walkinPatient.shift)
+        generateSerialNumber(doctorData.id, walkinPatient.date, type, walkinPatient.fee_type, walkinPatient.phone, undefined, getBranchId() === 'shyamoli' ? walkinPatient.shift : null)
       ]);
 
       const newPatient = patientResult.data;
@@ -744,7 +744,7 @@ const statusOrder: Record<string, number> = {
         paid: walkinPatient.advance,
         booked_by: receptionistName,
         branch: getBranchId(),
-        shift: walkinPatient.shift || null,
+        shift: getBranchId() === 'shyamoli' ? (walkinPatient.shift || null) : null,
       });
       if (aptError) { toast.error('অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ'); setCreatingWalkin(false); return; }
 

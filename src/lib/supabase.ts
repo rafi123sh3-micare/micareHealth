@@ -25,8 +25,11 @@ const FEE_TYPE_PREFIX: Record<string, string> = {
 
 function getLast4PhoneDigits(phone?: string): string {
   if (!phone) return '';
-  const cleaned = phone.replace(/\D/g, '');
-  return cleaned.slice(-4);
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 0) return '';
+  // Prefer last 4 of the full number (handles +880/88 etc.)
+  if (digits.length >= 4) return digits.slice(-4);
+  return digits.padStart(4, '0');
 }
 
 /** Insert or replace the Shyamoli shift letter: DR01-001ANM1234 / DR01-001ANE1234. */

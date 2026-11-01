@@ -147,7 +147,6 @@ export function calculateAppointmentExpectedTime(
     consumed += slot.capacity;
   }
 
-  // Serial ran past every capped session: keep counting from the last session.
   if (!served) {
     start = slots[slots.length - 1]?.start || '17:00';
     offset = position - consumed;
