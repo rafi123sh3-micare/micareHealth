@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Search, Filter, Check, X, Calendar, Clock, Video, MoreVertical, ChevronLeft, ChevronRight, ChevronDown, Plus, FileText, Upload, Printer, Scan, Receipt, Download, Heart, Pencil, MessageCircle } from 'lucide-react';
 import VitalsModal from '@/components/prescribe/VitalsModal';
@@ -387,6 +387,8 @@ export default function AdminAppointments() {
     return '';
   });
 
+  const loadedFilterDate = useRef(filterDate);
+
   useEffect(() => {
     loadData();
 
@@ -395,6 +397,13 @@ export default function AdminAppointments() {
       setTimeout(() => setShowWalkinModal(true), 500);
     }
   }, []);
+
+  // The list is scoped to one day, so a date change needs a fresh fetch.
+  useEffect(() => {
+    if (loadedFilterDate.current === filterDate) return;
+    loadedFilterDate.current = filterDate;
+    loadData(false);
+  }, [filterDate]);
 
   // Eagerly prefetch history templates for instant History modal
   useEffect(() => {
@@ -489,10 +498,13 @@ export default function AdminAppointments() {
       }
     }
 
-    // Fetch fresh data (the selected day is filtered client-side below).
+    // Fetch only the selected day. Fetching the whole table silently truncates
+    // at PostgREST's 1000-row cap, which dropped the earliest-booked patients
+    // (the lowest serials) of the day from the table.
     const { data: apts, error: aptError } = await supabase
       .from('appointments')
       .select('*, doctors(name, specialization), patients(name, phone, age, sex)')
+      .eq('date', filterDate || getLocalDateString())
       .order('created_at', { ascending: false });
 
     if (aptError) {
