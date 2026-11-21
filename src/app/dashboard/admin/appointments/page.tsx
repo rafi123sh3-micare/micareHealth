@@ -748,6 +748,12 @@ export default function AdminAppointments() {
 
     let updateData: any = { status: newStatus };
 
+    // A removed queue entry must not carry its former number when restored.
+    // A later confirmation will allocate the current next position instead.
+    if (!['confirmed', 'completed'].includes(newStatus)) {
+      updateData.serial_number = null;
+    }
+
     if ((newStatus === 'confirmed' || newStatus === 'completed') && !apt.serial_number) {
       const serialNumber = await generateSerialNumber(
         apt.doctor_id,
@@ -761,10 +767,14 @@ export default function AdminAppointments() {
       updateData.serial_number = serialNumber;
     }
 
-    const { error } = await supabase
+    // The database may re-sequence the queue in an AFTER trigger.  Ask it for
+    // the saved row so the confirmation SMS never uses the pre-save serial.
+    const { data: savedAppointment, error } = await supabase
       .from('appointments')
       .update(updateData)
-      .eq('id', apt.id);
+      .eq('id', apt.id)
+      .select('serial_number, shift')
+      .single();
 
     if (error) {
       console.error('Status update error:', error);
@@ -799,8 +809,8 @@ export default function AdminAppointments() {
               apt.doctors?.name || '',
               getAptBranch(apt),
               apt.date,
-              updateData.serial_number || apt.serial_number || '',
-              apt.shift
+              savedAppointment?.serial_number || updateData.serial_number || apt.serial_number || '',
+              savedAppointment?.shift || apt.shift
             );
             await sendSMS(patientPhone, smsText);
           }
@@ -842,7 +852,7 @@ export default function AdminAppointments() {
 
     const { error } = await supabase
       .from('appointments')
-      .update({ status: 'cancelled' })
+      .update({ status: 'cancelled', serial_number: null })
       .eq('id', apt.id);
 
     if (!error) {
@@ -862,7 +872,7 @@ export default function AdminAppointments() {
 
     const { error } = await supabase
       .from('appointments')
-      .update({ status: 'cancelled' })
+      .update({ status: 'cancelled', serial_number: null })
       .eq('id', id);
 
     if (!error && apt) {
@@ -990,7 +1000,9 @@ export default function AdminAppointments() {
       }
 
       const branchId = getBranchId();
-      const { error: aptError } = await supabase.from('appointments').insert({
+      // Return the stored row: the database queue trigger may have adjusted
+      // the serial allocated just before this insert.
+      const { data: savedAppointment, error: aptError } = await supabase.from('appointments').insert({
         patient_id: newPatient.id,
         doctor_id: walkinPatient.doctor_id,
         date: walkinPatient.date,
@@ -1006,7 +1018,7 @@ export default function AdminAppointments() {
         booked_by: receptionistName,
         branch: walkinBranch,
         shift: walkinBranch === 'shyamoli' ? (walkinPatient.shift || null) : null,
-      });
+      }).select('id, serial_number, shift').single();
 
       if (aptError) {
         toast.error(`অ্যাপয়েন্টমেন্ট তৈরি করতে ব্যর্থ: ${aptError.message}`);
@@ -1044,7 +1056,7 @@ export default function AdminAppointments() {
           designation: walkinDoctor?.designation || '',
           specialty: walkinDoctor?.specialty || '',
         },
-        serial_number: serialNumber,
+        serial_number: savedAppointment?.serial_number || serialNumber,
         date: walkinPatient.date,
         time: appointmentTime,
         scheduleStart,
@@ -1057,8 +1069,8 @@ export default function AdminAppointments() {
             walkinDoctor?.name || '',
             walkinBranch,
             walkinPatient.date,
-            serialNumber || '',
-            walkinBranch === 'shyamoli' ? walkinPatient.shift : null
+            savedAppointment?.serial_number || serialNumber || '',
+            savedAppointment?.shift || (walkinBranch === 'shyamoli' ? walkinPatient.shift : null)
           );
           await sendSMS(walkinPatient.phone, smsText);
         } catch (e) {
@@ -1157,9 +1169,9 @@ export default function AdminAppointments() {
       const scheduleStart = resolveScheduleStart(editSchedules, editApptForm.date);
       const type = editApptForm.type === 'teleconsult' ? 'teleconsult' : 'appointment';
 
-      // The serial is permanent once assigned — only its fee-type letter
-      // (N/F/R) is refreshed so it keeps matching fee_type. The queue position,
-      // doctor code, A/T marker and phone suffix are left untouched.
+      // Same doctor/date: preserve queue position. Moving an active appointment
+      // to a different doctor's list or a different day gives it the next
+      // position in that target queue, rather than injecting its old number.
       const updateData: any = {
         doctor_id: editApptForm.doctor_id,
         date: editApptForm.date,
@@ -1173,7 +1185,20 @@ export default function AdminAppointments() {
         time: scheduleStart || editPatientApt.time || '09:00',
       };
 
-      if (editPatientApt.serial_number) {
+      const queueLocationChanged = editPatientApt.doctor_id !== editApptForm.doctor_id || editPatientApt.date !== editApptForm.date;
+      if (queueLocationChanged && ['confirmed', 'completed'].includes(editPatientApt.status)) {
+        updateData.serial_number = await generateSerialNumber(
+          editApptForm.doctor_id,
+          editApptForm.date,
+          type,
+          editApptForm.fee_type,
+          editPatientForm.phone,
+          undefined,
+          editPatientApt.shift
+        );
+      } else if (queueLocationChanged) {
+        updateData.serial_number = null;
+      } else if (editPatientApt.serial_number) {
         updateData.serial_number = withFeeTypePrefix(editPatientApt.serial_number, editApptForm.fee_type);
       }
 
